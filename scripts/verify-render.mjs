@@ -9,7 +9,6 @@ const outputDir = path.resolve(process.env.VERIFY_OUTPUT_DIR ?? "verify");
 const browserPath = await resolveBrowserPath();
 const viewports = [
   { name: "desktop", width: 1280, height: 720 },
-  { name: "mobile", width: 390, height: 844 },
 ];
 
 let devServer = null;
@@ -53,21 +52,79 @@ async function verifyInBrowser() {
       await page.goto(url, { waitUntil: "networkidle" });
       await page.waitForSelector("canvas");
       await page.waitForSelector(".ui-layer");
-      await page.waitForSelector(".hud");
+      await page.waitForSelector(".party-panel");
       await page.waitForFunction(() => window.__RPG_GAME__?.getDiagnostics().frameCount > 3);
 
       const before = await readDiagnostics(page);
-      await page.mouse.click(viewport.width * 0.72, viewport.height * 0.58);
-      await page.waitForTimeout(900);
+      await page.locator('.action-bar button[data-formation="horizontal-line"]').click();
+      const formationAfter = await readDiagnostics(page);
+
+      await page.mouse.move(viewport.width * 0.5, viewport.height * 0.5);
+      await page.mouse.down();
+      await page.mouse.move(viewport.width * 0.5, viewport.height * 0.4);
+      await page.waitForTimeout(80);
+      const roleMenuVisible = await page.locator('[data-gesture-menu]:not([hidden])').count();
+      const anchoredMenuPosition = await page.locator('[data-gesture-menu]').evaluate((element) => ({
+        left: getComputedStyle(element).left,
+        top: getComputedStyle(element).top,
+      }));
+      const roleLabelsVisible = await page.locator('[data-gesture-menu]:not([hidden]) .gesture-menu__roles:visible').count();
+      await page.mouse.move(viewport.width * 0.5 + 80, viewport.height * 0.4 - 80);
+      await page.waitForTimeout(80);
+      const commandMenuVisible = await page.locator('[data-gesture-commands]:not([hidden])').count();
+      const nestedMenuPosition = await page.locator('[data-gesture-menu]').evaluate((element) => ({
+        left: getComputedStyle(element).left,
+        top: getComputedStyle(element).top,
+      }));
+      const diagonalGesture = await readDiagnostics(page);
+      await page.mouse.up();
+
+      await page.mouse.move(viewport.width * 0.5, viewport.height * 0.5);
+      await page.mouse.down();
+      await page.mouse.move(viewport.width * 0.5, viewport.height * 0.4);
+      await page.mouse.move(viewport.width * 0.5, viewport.height * 0.3);
+      await page.mouse.up();
+      await page.waitForTimeout(100);
+      const beforeCommandWasd = await readDiagnostics(page);
+      await page.keyboard.down("w");
+      await page.waitForTimeout(120);
+      await page.keyboard.up("w");
+      const afterCommandWasd = await readDiagnostics(page);
+      const maxMemberDeltaDuringCommandWasd = Math.max(
+        ...beforeCommandWasd.party.members.map((member) => {
+          const afterMember = afterCommandWasd.party.members.find((candidate) => candidate.id === member.id);
+          return afterMember ? groundDistance(member.position, afterMember.position) : Number.POSITIVE_INFINITY;
+        }),
+      );
+
+      await page.keyboard.down("w");
+      await page.waitForTimeout(700);
+      await page.keyboard.up("w");
+      await page.waitForTimeout(250);
       const after = await readDiagnostics(page);
-      const movementDistance = groundDistance(before.player.position, after.player.position);
+      const movementDistance = groundDistance(before.party.position, after.party.position);
 
       const screenshotPath = path.join(outputDir, `${viewport.name}.png`);
       await page.screenshot({ path: screenshotPath, fullPage: true });
 
       const metrics = await collectCanvasMetrics(page);
       const hud = await collectHudMetrics(page);
-      const result = { viewport, screenshotPath, metrics, hud, errors, movementDistance };
+      const result = {
+        viewport,
+        screenshotPath,
+        metrics,
+        hud,
+        errors,
+        movementDistance,
+        formationAfter,
+        roleMenuVisible,
+        commandMenuVisible,
+        roleLabelsVisible,
+        anchoredMenuPosition,
+        nestedMenuPosition,
+        diagonalGesture,
+        maxMemberDeltaDuringCommandWasd,
+      };
       assertResult(result);
       results.push(result);
 
@@ -140,14 +197,16 @@ async function collectCanvasMetrics(page) {
 
 async function collectHudMetrics(page) {
   return page.evaluate(() => {
-    const hud = document.querySelector(".hud");
+    const hud = document.querySelector(".party-panel");
     const actionBar = document.querySelector(".action-bar");
     const text = document.body.innerText;
     const normalizedText = text.toLowerCase();
     return {
       hasHud: hud instanceof HTMLElement && getComputedStyle(hud).display !== "none",
       hasActionBar: actionBar instanceof HTMLElement && getComputedStyle(actionBar).display !== "none",
-      hasVitals: text.includes("HP") && text.includes("STA"),
+      formationButtonCount: actionBar?.querySelectorAll("button[data-formation]").length ?? 0,
+      hasParty: normalizedText.includes("party") && normalizedText.includes("tank") && normalizedText.includes("healer"),
+      hasPlayerStamina: normalizedText.includes("sta"),
       hasQuest: normalizedText.includes("old gate"),
     };
   });
@@ -156,7 +215,7 @@ async function collectHudMetrics(page) {
 function assertResult(result) {
   const { viewport, metrics, hud, errors, movementDistance } = result;
   const usablePixels = metrics.nonDark > 1400 && metrics.bright > 8 && metrics.colorBuckets > 18;
-  const hudOk = hud.hasHud && hud.hasActionBar && hud.hasVitals && hud.hasQuest;
+  const hudOk = hud.hasHud && hud.hasActionBar && hud.formationButtonCount === 5 && hud.hasParty && !hud.hasPlayerStamina && hud.hasQuest;
 
   if (!usablePixels) {
     throw new Error(`${viewport.name} canvas looked blank or too flat: ${JSON.stringify(metrics)}`);
@@ -165,7 +224,38 @@ function assertResult(result) {
     throw new Error(`${viewport.name} HUD check failed: ${JSON.stringify(hud)}`);
   }
   if (movementDistance < 1.4) {
-    throw new Error(`${viewport.name} click-to-move did not move far enough: ${movementDistance}`);
+    throw new Error(`${viewport.name} WASD movement did not move far enough: ${movementDistance}`);
+  }
+  if (result.formationAfter.party.formation !== "horizontal-line") {
+    throw new Error(`${viewport.name} formation button did not select horizontal-line`);
+  }
+  if (result.formationAfter.party.memberCount !== 10) {
+    throw new Error(`${viewport.name} party did not contain ten members: ${result.formationAfter.party.memberCount}`);
+  }
+  const roleCounts = result.formationAfter.party.members.reduce((counts, member) => {
+    counts[member.role] = (counts[member.role] ?? 0) + 1;
+    return counts;
+  }, {});
+  if (roleCounts.tank !== 2 || roleCounts.melee !== 3 || roleCounts.ranged !== 3 || roleCounts.healer !== 2) {
+    throw new Error(`${viewport.name} role counts were incorrect: ${JSON.stringify(roleCounts)}`);
+  }
+  if (result.roleMenuVisible === 0 || result.commandMenuVisible === 0) {
+    throw new Error(`${viewport.name} gesture menus did not open: role=${result.roleMenuVisible}, command=${result.commandMenuVisible}`);
+  }
+  if (result.roleLabelsVisible !== 0) {
+    throw new Error(`${viewport.name} role labels remained visible in the command ring`);
+  }
+  if (
+    result.anchoredMenuPosition.left !== result.nestedMenuPosition.left ||
+    result.anchoredMenuPosition.top !== result.nestedMenuPosition.top
+  ) {
+    throw new Error(`${viewport.name} gesture menu moved during selection`);
+  }
+  if (result.diagonalGesture.input.gesture.command !== null) {
+    throw new Error(`${viewport.name} diagonal gesture selected ${result.diagonalGesture.input.gesture.command}`);
+  }
+  if (result.maxMemberDeltaDuringCommandWasd > 6) {
+    throw new Error(`${viewport.name} a member warped during WASD movement: ${result.maxMemberDeltaDuringCommandWasd}`);
   }
   if (errors.length > 0) {
     throw new Error(`${viewport.name} browser errors: ${errors.join(" | ")}`);

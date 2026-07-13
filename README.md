@@ -17,13 +17,17 @@ Open the local Vite URL, usually `http://127.0.0.1:5173/`.
 npm run verify
 ```
 
-This runs the production build and a headless browser smoke test for canvas rendering, HUD layout, resize handling, and click-to-move input.
+This runs the production build and a headless browser smoke test for canvas rendering, HUD layout, resize handling, and WASD party movement.
 
 ## Current Shape
 
 - Full-screen Three.js renderer with an orthographic isometric camera.
-- Click or hold movement on a bounded ground plane.
-- Simple modular game loop, input, player, world, camera, and HUD classes.
+- Camera-relative WASD movement and facing for a ten-member party: two tanks, three melee DPS, three ranged DPS, and two healers.
+- Triangle, tight circle, loose circle, horizontal line, and vertical line formation controls.
+- Party portraits with individual health bars and role-colored in-world units.
+- Hold left click and gesture toward a role, then choose a Move, Hold, or Return command for that role group.
+- A reusable ability system with prototype Taunt, Whirlwind, Fireball, and Heal abilities, currently kept out of the formation HUD.
+- No enemy implementation yet; ability effects are emitted as combat events for the next pass.
+- Simple modular game loop, input, party, ability, world, camera, and HUD classes.
 - Dev-only `window.__RPG_GAME__` diagnostics hook for render and gameplay checks.
 - Production static server, PM2 config, deploy script, and Playwright render verification matching the other minigame projects.
-

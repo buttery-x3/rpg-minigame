@@ -5,7 +5,7 @@ import { materials } from "../render/materials";
 import type { RpgDiagnostics } from "../types";
 import { CameraRig } from "./camera/CameraRig";
 import { GameInput } from "./input/GameInput";
-import { PlayerController } from "./player/PlayerController";
+import { PartyController } from "./party/PartyController";
 import { WorldScene } from "./world/WorldScene";
 import { Hud } from "../ui/Hud";
 
@@ -16,8 +16,7 @@ export class RpgGame {
   private readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 250);
   private readonly clock = new THREE.Clock();
   private readonly world = new WorldScene();
-  private readonly player = new PlayerController();
-  private readonly targetMarker = new THREE.Mesh(new THREE.RingGeometry(0.6, 0.8, 24), materials.marker);
+  private readonly party = new PartyController();
   private readonly cameraRig: CameraRig;
   private readonly input: GameInput;
   private readonly hud: Hud;
@@ -36,10 +35,14 @@ export class RpgGame {
     this.cameraRig = new CameraRig(this.camera, this.renderer);
     this.input = new GameInput(this.camera, this.renderer, {
       isPaused: () => this.paused,
-      setMoveTarget: (target) => this.setMoveTarget(target),
+      setMoveInput: (input) => this.party.setMoveInput(input),
+      issueRoleCommand: (role, command, target) => this.party.issueRoleCommand(role, command, target),
+      setGesturePreview: (preview) => this.hud.setGesturePreview(preview),
       togglePaused: () => this.togglePaused(),
     });
-    this.hud = new Hud(this.player);
+    this.hud = new Hud(this.party, {
+      setFormation: (formation) => this.party.setFormation(formation),
+    });
 
     this.configureRenderer();
     this.buildScene();
@@ -55,19 +58,31 @@ export class RpgGame {
     return {
       frameCount: this.frameCount,
       paused: this.paused,
-      player: {
-        position: vecToTuple(this.player.position),
-        target: vecToTuple(this.player.target),
-        moving: this.player.isMoving(),
-        health: this.player.health,
-        stamina: this.player.stamina,
+      party: {
+        position: vecToTuple(this.party.position),
+        moving: this.party.isMoving(),
+        formation: this.party.formation,
+        heading: this.party.headingAngle,
+        memberCount: this.party.members.length,
+        members: this.party.members.map((member) => ({
+          id: member.id,
+          role: member.role,
+          position: vecToTuple(member.worldPosition),
+          health: member.health,
+          maxHealth: member.maxHealth,
+          ability: {
+            id: member.abilities[0].id,
+            cooldownRemaining: this.party.getAbilityCooldown(member),
+          },
+        })),
       },
       camera: {
         position: vecToTuple(this.camera.position),
       },
       input: {
         pointerWorld: vecToTuple(this.input.pointerWorld),
-        holdingMove: this.input.holdingMove,
+        moving: this.input.moving,
+        gesture: this.input.gesture,
       },
       world: {
         propCount: this.world.propCount,
@@ -107,11 +122,7 @@ export class RpgGame {
     sun.shadow.camera.bottom = -42;
     this.scene.add(sun);
 
-    this.targetMarker.rotation.x = -Math.PI / 2;
-    this.targetMarker.position.y = 0.09;
-    this.targetMarker.visible = false;
-
-    this.scene.add(this.world.group, this.player.group, this.targetMarker);
+    this.scene.add(this.world.group, this.party.group);
   }
 
   private readonly tick = () => {
@@ -119,27 +130,15 @@ export class RpgGame {
     this.animationFrame = window.requestAnimationFrame(this.tick);
 
     if (!this.paused) {
-      this.input.update(dt);
-      if (this.input.consumeMoveRequest()) {
-        this.setMoveTarget(this.input.pointerWorld);
-      }
-      this.player.update(dt);
+      this.input.update();
+      this.party.update(dt);
     }
 
-    this.targetMarker.position.x = this.player.target.x;
-    this.targetMarker.position.z = this.player.target.z;
-    this.targetMarker.visible = this.player.isMoving();
-    this.targetMarker.rotation.z += dt * 1.8;
-
-    this.cameraRig.update(dt, this.player.position);
+    this.cameraRig.update(dt, this.party.position);
     this.hud.update(this.paused);
     this.renderer.render(this.scene, this.camera);
     this.frameCount += 1;
   };
-
-  private setMoveTarget(target: THREE.Vector3) {
-    this.player.setMoveTarget(target);
-  }
 
   private togglePaused() {
     this.paused = !this.paused;
