@@ -55,15 +55,15 @@ function buildTriangleSlots(members: readonly FormationMember[]) {
 function buildTightCircleSlots(members: readonly FormationMember[]) {
   const slots = new Map<string, THREE.Vector3>();
   const activeRoles = ROLE_ORDER.filter((role) => members.some((member) => member.role === role));
-  const columnWidth = activeRoles.length > 1 ? (activeRoles.length - 1) * SLOT_SPACING : 0;
+  const formationDepth = activeRoles.length > 1 ? (activeRoles.length - 1) * SLOT_SPACING : 0;
 
   activeRoles.forEach((role, roleIndex) => {
     const roleMembers = members.filter((member) => member.role === role);
-    const columnHeight = (roleMembers.length - 1) * SLOT_SPACING;
-    const x = roleIndex * SLOT_SPACING - columnWidth / 2;
+    const rowWidth = (roleMembers.length - 1) * SLOT_SPACING;
+    const z = roleIndex * SLOT_SPACING - formationDepth / 2;
 
     roleMembers.forEach((member, memberIndex) => {
-      slots.set(member.id, new THREE.Vector3(x, 0, memberIndex * SLOT_SPACING - columnHeight / 2));
+      slots.set(member.id, new THREE.Vector3(memberIndex * SLOT_SPACING - rowWidth / 2, 0, z));
     });
   });
 
