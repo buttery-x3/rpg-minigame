@@ -23,26 +23,124 @@ canvas {
 }
 
 .ui-layer {
-  --health: 100%;
-  --stamina: 84%;
   position: fixed;
   inset: 0;
   pointer-events: none;
 }
 
-.hud {
+.party-panel {
   position: fixed;
   top: 16px;
   left: 16px;
-  width: min(220px, calc(100vw - 32px));
+  width: min(274px, calc(100vw - 32px));
   display: grid;
-  gap: 7px;
+  gap: 8px;
   padding: 12px;
   border: 1px solid rgb(245 242 233 / 18%);
   border-radius: 8px;
   background: rgb(20 27 35 / 76%);
   box-shadow: 0 16px 40px rgb(0 0 0 / 24%);
   backdrop-filter: blur(14px);
+}
+
+.party-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: rgb(245 242 233 / 70%);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.party-panel__header strong {
+  color: #fff9dc;
+  font-size: 13px;
+}
+
+.party-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.member-card {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 4%);
+  color: #f5f2e9;
+  text-align: left;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.member-card:hover,
+.member-card:focus-visible {
+  border-color: rgb(245 242 233 / 32%);
+  background: rgb(255 255 255 / 8%);
+  outline: none;
+}
+
+.member-card__portrait {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--role-color), #182028 35%);
+  color: #fff9dc;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.member-card__details {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.member-card__details strong {
+  overflow: hidden;
+  color: #fff9dc;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-card__details small {
+  overflow: hidden;
+  color: rgb(245 242 233 / 55%);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-card__meter {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 10%);
+}
+
+.member-card__meter span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #bf4752, #ecb65b);
+  transition: width 140ms ease;
+}
+
+.member-card b {
+  align-self: start;
+  color: #fff9dc;
+  font-size: 11px;
 }
 
 .hud__row,
@@ -57,30 +155,9 @@ canvas {
   line-height: 1.2;
 }
 
-.hud strong,
 .quest-panel strong {
   color: #fff9dc;
   font-size: 14px;
-}
-
-.meter {
-  height: 7px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgb(255 255 255 / 10%);
-}
-
-.meter span {
-  display: block;
-  width: var(--health);
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #bf4752, #ecb65b);
-}
-
-.meter--stamina span {
-  width: var(--stamina);
-  background: linear-gradient(90deg, #4e9f70, #c6d86f);
 }
 
 .quest-panel {
@@ -98,6 +175,12 @@ canvas {
   backdrop-filter: blur(14px);
 }
 
+.quest-panel small {
+  min-height: 15px;
+  color: rgb(245 242 233 / 56%);
+  font-size: 10px;
+}
+
 .quest-panel__label {
   color: #e6c06a;
   font-size: 11px;
@@ -111,25 +194,41 @@ canvas {
   left: 50%;
   bottom: 18px;
   display: grid;
-  grid-template-columns: repeat(3, 54px);
-  gap: 9px;
+  grid-template-columns: repeat(5, 108px);
+  gap: 8px;
   transform: translateX(-50%);
   pointer-events: auto;
 }
 
 .action-bar button {
   position: relative;
-  width: 54px;
-  height: 54px;
+  --role-color: #e6c06a;
+  width: 108px;
+  height: 58px;
   border: 1px solid rgb(255 249 220 / 20%);
   border-radius: 8px;
   background:
-    radial-gradient(circle at 50% 38%, rgb(243 211 123 / 32%), transparent 34%),
+    radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--role-color), transparent 48%), transparent 46%),
     linear-gradient(145deg, rgb(36 45 56 / 92%), rgb(20 27 35 / 92%));
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 12%),
     0 14px 28px rgb(0 0 0 / 24%);
   color: #fff9dc;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.action-bar button:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+
+.action-bar button.is-selected {
+  border-color: #e6c06a;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 18%),
+    0 0 18px rgb(230 192 106 / 30%),
+    0 14px 28px rgb(0 0 0 / 24%);
 }
 
 .action-bar button span {
@@ -142,22 +241,108 @@ canvas {
 }
 
 .action-bar button strong {
+  display: block;
+  margin-top: 10px;
+  color: var(--role-color);
+  font-size: 12px;
+}
+
+.action-bar button small {
+  display: block;
+  margin-top: 2px;
+  color: rgb(245 242 233 / 52%);
+  font-size: 9px;
+}
+
+.action-bar button em {
   position: absolute;
-  inset: 17px;
+  right: 6px;
+  bottom: 5px;
+  color: rgb(245 242 233 / 62%);
+  font-size: 9px;
+  font-style: normal;
+}
+
+.gesture-menu {
+  position: fixed;
+  display: grid;
+  width: 176px;
+  height: 176px;
+  place-items: center;
+  border: 1px solid rgb(245 242 233 / 22%);
   border-radius: 50%;
-  background: #e6c06a;
-  box-shadow: 0 0 18px rgb(230 192 106 / 48%);
+  background: rgb(20 27 35 / 90%);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 34%);
+  color: rgb(245 242 233 / 74%);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
-.action-bar button:nth-child(2) strong {
+.gesture-menu[hidden] {
+  display: none;
+}
+
+.gesture-menu__title {
+  position: absolute;
+  top: 23px;
+  color: #fff9dc;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.gesture-menu__roles,
+.gesture-menu__commands {
+  position: absolute;
+  inset: 0;
+}
+
+.gesture-menu--nested .gesture-menu__roles {
+  display: none;
+}
+
+.gesture-menu__roles span,
+.gesture-menu__commands span {
+  position: absolute;
+  padding: 4px 6px;
   border-radius: 4px;
-  background: #74a9d8;
-  box-shadow: 0 0 18px rgb(116 169 216 / 48%);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
-.action-bar button:nth-child(3) strong {
-  background: #8bbf78;
-  box-shadow: 0 0 18px rgb(139 191 120 / 48%);
+.gesture-menu__roles span:nth-child(1),
+.gesture-menu__commands span:nth-child(1) {
+  top: 39px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.gesture-menu__roles span:nth-child(2),
+.gesture-menu__commands span:nth-child(2) {
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+}
+
+.gesture-menu__roles span:nth-child(3),
+.gesture-menu__commands span:nth-child(3) {
+  bottom: 39px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.gesture-menu__roles span:nth-child(4),
+.gesture-menu__commands span:nth-child(4) {
+  top: 50%;
+  left: 10px;
+  transform: translateY(-50%);
+}
+
+.gesture-menu__roles span.is-selected,
+.gesture-menu__commands span.is-selected {
+  background: #e6c06a;
+  color: #182028;
+  font-weight: 800;
 }
 
 .pause-shade {
@@ -174,35 +359,4 @@ canvas {
 
 .pause-shade[hidden] {
   display: none;
-}
-
-@media (max-width: 680px) {
-  .hud {
-    top: 10px;
-    left: 10px;
-    width: 150px;
-    padding: 10px;
-  }
-
-  .quest-panel {
-    top: 10px;
-    right: 10px;
-    width: 154px;
-    padding: 10px;
-  }
-
-  .quest-panel strong {
-    font-size: 13px;
-  }
-
-  .action-bar {
-    bottom: 12px;
-    grid-template-columns: repeat(3, 48px);
-    gap: 7px;
-  }
-
-  .action-bar button {
-    width: 48px;
-    height: 48px;
-  }
 }

@@ -1,14 +1,18 @@
 import * as THREE from "three";
 import { WORLD_BOUNDS } from "../../config";
 import { clamp } from "../../lib/math";
+import type { GestureCommand, GesturePreview, PartyCommand, PartyRole } from "../../types";
 
 type InputCallbacks = {
   isPaused: () => boolean;
-  setMoveTarget: (target: THREE.Vector3) => void;
+  setMoveInput: (input: THREE.Vector2) => void;
+  issueRoleCommand: (role: PartyRole, command: PartyCommand, target: THREE.Vector3) => void;
+  setGesturePreview: (preview: GesturePreview) => void;
   togglePaused: () => void;
 };
 
-const HELD_MOVE_REFIRE_SECONDS = 0.08;
+const GESTURE_THRESHOLD = 34;
+const GESTURE_DIRECTION_TOLERANCE = Math.PI / 6;
 
 export class GameInput {
   readonly pointerWorld = new THREE.Vector3();
@@ -17,10 +21,16 @@ export class GameInput {
   private readonly pointerNdc = new THREE.Vector2();
   private readonly pointerClient = new THREE.Vector2();
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private readonly cameraRight = new THREE.Vector3();
+  private readonly cameraUp = new THREE.Vector3();
+  private readonly cameraRelativeMove = new THREE.Vector3();
+  private readonly pressedKeys = new Set<string>();
   private pressedPointerId: number | null = null;
   private hasPointerClient = false;
-  private moveRequestPending = false;
-  private heldMoveRefireIn = 0;
+  private gestureRole: PartyRole | null = null;
+  private gestureCommand: GestureCommand | null = null;
+  private gestureStart = new THREE.Vector2();
+  private commandStart = new THREE.Vector2();
 
   constructor(
     private readonly camera: THREE.Camera,
@@ -28,6 +38,7 @@ export class GameInput {
     private readonly callbacks: InputCallbacks,
   ) {
     window.addEventListener("keydown", this.handleKeyDown);
+    window.addEventListener("keyup", this.handleKeyUp);
     window.addEventListener("pointerdown", this.handlePointerDown);
     window.addEventListener("pointermove", this.handlePointerMove);
     window.addEventListener("pointerup", this.handlePointerUp);
@@ -35,34 +46,44 @@ export class GameInput {
     window.addEventListener("contextmenu", this.preventContextMenu);
   }
 
-  update(dt: number) {
+  update() {
     this.refreshPointerWorld();
+    const horizontalInput =
+      (this.pressedKeys.has("d") ? 1 : 0) - (this.pressedKeys.has("a") ? 1 : 0);
+    const verticalInput = (this.pressedKeys.has("w") ? 1 : 0) - (this.pressedKeys.has("s") ? 1 : 0);
 
-    if (!this.isHoldingMove()) {
-      this.moveRequestPending = false;
-      this.heldMoveRefireIn = 0;
-      return;
-    }
+    this.cameraRight.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
+    this.cameraRight.y = 0;
+    this.cameraRight.normalize();
+    this.cameraUp.set(0, 1, 0).applyQuaternion(this.camera.quaternion);
+    this.cameraUp.y = 0;
+    this.cameraUp.normalize();
+    this.cameraRelativeMove
+      .set(0, 0, 0)
+      .addScaledVector(this.cameraRight, horizontalInput)
+      .addScaledVector(this.cameraUp, verticalInput);
 
-    this.heldMoveRefireIn -= dt;
-    if (this.heldMoveRefireIn <= 0) {
-      this.moveRequestPending = true;
-      this.heldMoveRefireIn = HELD_MOVE_REFIRE_SECONDS;
-    }
+    const moveInput = new THREE.Vector2(this.cameraRelativeMove.x, this.cameraRelativeMove.z);
+    this.callbacks.setMoveInput(this.callbacks.isPaused() ? new THREE.Vector2() : moveInput);
   }
 
-  consumeMoveRequest() {
-    const shouldMove = this.isHoldingMove() && this.moveRequestPending;
-    this.moveRequestPending = false;
-    return shouldMove;
+  get moving() {
+    return this.pressedKeys.has("w") || this.pressedKeys.has("a") || this.pressedKeys.has("s") || this.pressedKeys.has("d");
   }
 
-  get holdingMove() {
-    return this.isHoldingMove();
+  get gesture() {
+    return {
+      active: this.pressedPointerId !== null,
+      role: this.gestureRole,
+      command: this.gestureCommand,
+      screenX: this.gestureStart.x,
+      screenY: this.gestureStart.y,
+    } satisfies GesturePreview;
   }
 
   dispose() {
     window.removeEventListener("keydown", this.handleKeyDown);
+    window.removeEventListener("keyup", this.handleKeyUp);
     window.removeEventListener("pointerdown", this.handlePointerDown);
     window.removeEventListener("pointermove", this.handlePointerMove);
     window.removeEventListener("pointerup", this.handlePointerUp);
@@ -71,12 +92,23 @@ export class GameInput {
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent) => {
-    if (event.repeat) {
+    const key = event.key.toLowerCase();
+    if (["w", "a", "s", "d"].includes(key)) {
+      this.pressedKeys.add(key);
+      event.preventDefault();
       return;
     }
 
-    if (event.key === "Escape") {
+    if (!event.repeat && event.key === "Escape") {
       this.callbacks.togglePaused();
+    }
+  };
+
+  private readonly handleKeyUp = (event: KeyboardEvent) => {
+    const key = event.key.toLowerCase();
+    if (["w", "a", "s", "d"].includes(key)) {
+      this.pressedKeys.delete(key);
+      event.preventDefault();
     }
   };
 
@@ -87,9 +119,11 @@ export class GameInput {
 
     this.updatePointerWorld(event);
     this.pressedPointerId = event.pointerId;
-    this.moveRequestPending = false;
-    this.heldMoveRefireIn = HELD_MOVE_REFIRE_SECONDS;
-    this.callbacks.setMoveTarget(this.pointerWorld);
+    this.gestureRole = null;
+    this.gestureCommand = null;
+    this.gestureStart.set(event.clientX, event.clientY);
+    this.commandStart.copy(this.gestureStart);
+    this.emitGesturePreview();
   };
 
   private readonly handlePointerMove = (event: PointerEvent) => {
@@ -98,25 +132,111 @@ export class GameInput {
     }
 
     this.updatePointerWorld(event);
-    if (this.isHoldingMove()) {
-      this.moveRequestPending = true;
+    if (event.pointerId !== this.pressedPointerId) {
+      return;
     }
+
+    this.updateGesture(event);
+    this.emitGesturePreview();
   };
 
   private readonly handlePointerUp = (event: PointerEvent) => {
-    if (event.pointerId === this.pressedPointerId) {
-      this.pressedPointerId = null;
-      this.moveRequestPending = false;
-      this.heldMoveRefireIn = 0;
+    if (event.pointerId !== this.pressedPointerId) {
+      return;
     }
+
+    if (this.gestureRole && this.gestureCommand && this.gestureCommand !== "cancel") {
+      this.callbacks.issueRoleCommand(this.gestureRole, this.gestureCommand, this.pointerWorld.clone());
+    }
+
+    this.pressedPointerId = null;
+    this.gestureRole = null;
+    this.gestureCommand = null;
+    this.emitGesturePreview();
   };
 
   private readonly preventContextMenu = (event: Event) => {
     event.preventDefault();
   };
 
-  private isHoldingMove() {
-    return this.pressedPointerId !== null && !this.callbacks.isPaused();
+  private updateGesture(event: PointerEvent) {
+    if (!this.gestureRole) {
+      const distance = Math.hypot(event.clientX - this.gestureStart.x, event.clientY - this.gestureStart.y);
+      if (distance >= GESTURE_THRESHOLD) {
+        const role = this.roleFromDirection(event.clientX - this.gestureStart.x, event.clientY - this.gestureStart.y);
+        if (role) {
+          this.gestureRole = role;
+          this.commandStart.set(event.clientX, event.clientY);
+        }
+      }
+      return;
+    }
+
+    const distance = Math.hypot(event.clientX - this.commandStart.x, event.clientY - this.commandStart.y);
+    if (distance >= GESTURE_THRESHOLD) {
+      this.gestureCommand = this.commandFromDirection(event.clientX - this.commandStart.x, event.clientY - this.commandStart.y);
+    }
+  }
+
+  private roleFromDirection(x: number, y: number): PartyRole | null {
+    const direction = this.nearestCardinalDirection(x, y);
+    if (!direction) {
+      return null;
+    }
+
+    const roles: Record<"right" | "left" | "up" | "down", PartyRole> = {
+      right: "melee",
+      left: "ranged",
+      up: "tank",
+      down: "healer",
+    };
+    return roles[direction];
+  }
+
+  private commandFromDirection(x: number, y: number): GestureCommand | null {
+    const direction = this.nearestCardinalDirection(x, y);
+    if (!direction) {
+      return null;
+    }
+
+    const commands: Record<"right" | "left" | "up" | "down", GestureCommand> = {
+      right: "hold",
+      left: "cancel",
+      up: "move",
+      down: "return",
+    };
+    return commands[direction];
+  }
+
+  private nearestCardinalDirection(x: number, y: number): "right" | "left" | "up" | "down" | null {
+    const angle = Math.atan2(y, x);
+    const candidates = [
+      { name: "right" as const, angle: 0 },
+      { name: "down" as const, angle: Math.PI / 2 },
+      { name: "left" as const, angle: Math.PI },
+      { name: "up" as const, angle: -Math.PI / 2 },
+    ];
+
+    let closest = candidates[0];
+    let closestDistance = this.angularDistance(angle, closest.angle);
+    for (const candidate of candidates.slice(1)) {
+      const distance = this.angularDistance(angle, candidate.angle);
+      if (distance < closestDistance) {
+        closest = candidate;
+        closestDistance = distance;
+      }
+    }
+
+    return closestDistance <= GESTURE_DIRECTION_TOLERANCE ? closest.name : null;
+  }
+
+  private angularDistance(a: number, b: number) {
+    const distance = Math.abs(a - b) % (Math.PI * 2);
+    return distance > Math.PI ? Math.PI * 2 - distance : distance;
+  }
+
+  private emitGesturePreview() {
+    this.callbacks.setGesturePreview(this.gesture);
   }
 
   private isUiEvent(event: Event) {
@@ -144,4 +264,3 @@ export class GameInput {
     this.pointerWorld.z = clamp(this.pointerWorld.z, -WORLD_BOUNDS, WORLD_BOUNDS);
   }
 }
-
