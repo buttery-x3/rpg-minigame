@@ -85,7 +85,6 @@ export class RpgGame {
         gesture: this.input.gesture,
       },
       world: {
-        propCount: this.world.propCount,
         bounds: WORLD_BOUNDS,
       },
     };

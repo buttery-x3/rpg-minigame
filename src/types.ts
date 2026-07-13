@@ -43,7 +43,6 @@ export type RpgDiagnostics = {
     gesture: GesturePreview;
   };
   world: {
-    propCount: number;
     bounds: number;
   };
 };
