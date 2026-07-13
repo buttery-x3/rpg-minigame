@@ -19,6 +19,16 @@ npm run verify
 
 This runs the production build and a headless browser smoke test for canvas rendering, HUD layout, resize handling, and WASD party movement.
 
+## Deploy
+
+From the repository root on the Linux server:
+
+```bash
+./deploy.sh
+```
+
+The deployment script pulls the latest fast-forwardable commit, installs dependencies, builds the `/rpg/` deployment, reloads PM2, saves the process list, and reports the `rpg-minigame` status.
+
 ## Current Shape
 
 - Full-screen Three.js renderer with an orthographic isometric camera.

@@ -12,7 +12,7 @@
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:reload": "pm2 startOrReload ecosystem.config.cjs --update-env",
     "pm2:stop": "pm2 delete rpg-minigame",
-    "deploy:production": "bash scripts/deploy-production.sh",
+    "deploy:production": "bash deploy.sh",
     "verify:render": "node scripts/verify-render.mjs",
     "verify": "npm run build && npm run verify:render"
   },
@@ -27,4 +27,3 @@
     "vitest": "^4.1.7"
   }
 }
-
