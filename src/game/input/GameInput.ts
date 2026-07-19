@@ -7,7 +7,6 @@ type InputCallbacks = {
   isPaused: () => boolean;
   setMoveInput: (input: THREE.Vector2) => void;
   issueRoleCommand: (role: PartyRole, command: PartyCommand, target: THREE.Vector3) => void;
-  useRoleAbility: (role: PartyRole) => void;
   setGesturePreview: (preview: GesturePreview) => void;
   togglePaused: () => void;
 };
@@ -150,8 +149,6 @@ export class GameInput {
 
     if (this.gestureRole && this.gestureIntent === "move") {
       this.callbacks.issueRoleCommand(this.gestureRole, "move", this.gestureTarget.clone());
-    } else if (this.gestureRole && this.gestureIntent === "attention") {
-      this.callbacks.useRoleAbility(this.gestureRole);
     }
 
     this.pressedPointerId = null;

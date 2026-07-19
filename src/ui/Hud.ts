@@ -1,6 +1,7 @@
 import type { FormationType, GesturePreview, PartyRole } from "../types";
 import type { PartyController } from "../game/party/PartyController";
 import type { PartyGroup } from "../game/party/PartyGroup";
+import type { CombatStance } from "../game/combat/types";
 
 const roleLabels: Partial<Record<PartyRole, string>> = {
   tank: "Tank",
@@ -38,6 +39,7 @@ type GroupPanel = {
   count: HTMLElement;
   list: HTMLElement;
   formationButtons: Map<FormationType, HTMLButtonElement>;
+  stanceButtons: Map<CombatStance, HTMLButtonElement>;
 };
 
 export class Hud {
@@ -50,7 +52,7 @@ export class Hud {
   private readonly pauseShade = document.createElement("div");
   private readonly gestureMenu: HTMLElement;
   private readonly gestureTitle: HTMLElement;
-  private readonly memberCards = new Map<string, { card: HTMLElement; health: HTMLElement; bar: HTMLElement }>();
+  private readonly memberCards = new Map<string, { card: HTMLElement; health: HTMLElement; bar: HTMLElement; energy: HTMLElement; energyBar: HTMLElement; threat: HTMLElement; action: HTMLElement; abilities: HTMLElement }>();
   private readonly groupPanels = new Map<string, GroupPanel>();
 
   constructor(
@@ -58,6 +60,8 @@ export class Hud {
     private readonly callbacks: {
       setFormation: (groupId: string, formation: FormationType) => void;
       returnGroup: (groupId: string) => void;
+      setStance: (groupId: string, stance: CombatStance) => void;
+      recallGroup: (groupId: string) => void;
       setCameraAngle: (angle: number) => void;
       setCameraHeight: (height: number) => void;
       setCameraFov: (fov: number) => void;
@@ -129,6 +133,11 @@ export class Hud {
       const health = Math.round(member.health);
       elements.health.textContent = `${health}`;
       elements.bar.style.width = `${(member.health / member.maxHealth) * 100}%`;
+      elements.energy.textContent = `${Math.round(member.energy)}`;
+      elements.energyBar.style.width = `${(member.energy / member.maxEnergy) * 100}%`;
+      elements.threat.textContent = `${Math.round(member.threat)}`;
+      elements.action.textContent = member.action === "idle" ? this.roleLabel(member.role) : `${this.roleLabel(member.role)} · ${member.action}`;
+      elements.abilities.textContent = this.party.getAbilityStatus(member.id);
     });
 
     this.party.groups.forEach((group) => {
@@ -140,6 +149,8 @@ export class Hud {
       panel.count.textContent = `${group.members.length} members`;
       group.members.forEach((member) => panel.list.append(this.memberCards.get(member.id)?.card ?? document.createElement("div")));
       panel.formationButtons.forEach((button, formation) => button.classList.toggle("is-selected", formation === group.formation));
+      const stance = this.party.getGroupStance(group.id);
+      panel.stanceButtons.forEach((button, candidate) => button.classList.toggle("is-selected", stance === candidate));
     });
 
     this.locationValue.textContent = this.party.position.z > 6 ? "Gateward Road" : "Mosswake Field";
@@ -193,6 +204,7 @@ export class Hud {
     `;
     const formations = this.requireFrom<HTMLElement>(panel, ".party-panel__formations");
     const formationButtons = new Map<FormationType, HTMLButtonElement>();
+    const stanceButtons = new Map<CombatStance, HTMLButtonElement>();
     (Object.keys(formationLabels) as FormationType[]).forEach((formation) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -204,6 +216,25 @@ export class Hud {
       formations.append(button);
       formationButtons.set(formation, button);
     });
+    (["aggressive", "balanced", "defensive"] as CombatStance[]).forEach((stance) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.stance = stance;
+      button.title = `${stance.charAt(0).toUpperCase()}${stance.slice(1)} stance`;
+      button.setAttribute("aria-label", button.title);
+      button.textContent = ({ aggressive: "A", balanced: "B", defensive: "D" } as Record<CombatStance, string>)[stance];
+      button.addEventListener("click", () => this.callbacks.setStance(group.id, stance));
+      formations.append(button);
+      stanceButtons.set(stance, button);
+    });
+    const recallButton = document.createElement("button");
+    recallButton.type = "button";
+    recallButton.className = "party-panel__recall";
+    recallButton.title = "Recall to formation";
+    recallButton.setAttribute("aria-label", "Recall to formation");
+    recallButton.textContent = "⌂";
+    recallButton.addEventListener("click", () => this.callbacks.recallGroup(group.id));
+    formations.append(recallButton);
     if (!group.isMain) {
       const returnButton = document.createElement("button");
       returnButton.type = "button";
@@ -221,6 +252,7 @@ export class Hud {
       count: this.requireFrom(panel, "[data-party-count]"),
       list: this.requireFrom(panel, "[data-party-list]"),
       formationButtons,
+      stanceButtons,
     });
     group.members.forEach((member) => this.ensureMemberCard(member.id));
   }
@@ -238,10 +270,10 @@ export class Hud {
     card.dataset.memberId = member.id;
     card.innerHTML = `
       <span class="member-card__portrait" style="--role-color: ${this.roleColor(member.role)}">${member.displayName.slice(0, 1)}</span>
-      <span class="member-card__details"><strong>${member.displayName}</strong><small>${this.roleLabel(member.role)}</small><span class="member-card__meter"><span data-member-health-bar></span></span></span>
-      <b data-member-health></b>
+      <span class="member-card__details"><strong>${member.displayName}</strong><small data-member-action>${this.roleLabel(member.role)}</small><span class="member-card__meter"><span data-member-health-bar></span></span><span class="member-card__meter member-card__meter--energy"><span data-member-energy-bar></span></span><small data-member-abilities></small></span>
+      <b>H<span data-member-health></span><br>E<span data-member-energy></span><br>T<span data-member-threat></span></b>
     `;
-    this.memberCards.set(member.id, { card, health: this.requireFrom(card, "[data-member-health]"), bar: this.requireFrom(card, "[data-member-health-bar]") });
+    this.memberCards.set(member.id, { card, health: this.requireFrom(card, "[data-member-health]"), bar: this.requireFrom(card, "[data-member-health-bar]"), energy: this.requireFrom(card, "[data-member-energy]"), energyBar: this.requireFrom(card, "[data-member-energy-bar]"), threat: this.requireFrom(card, "[data-member-threat]"), action: this.requireFrom(card, "[data-member-action]"), abilities: this.requireFrom(card, "[data-member-abilities]") });
   }
 
   private groupLabel(group: PartyGroup) {

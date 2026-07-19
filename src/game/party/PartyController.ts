@@ -1,9 +1,11 @@
 import * as THREE from "three";
 import { WORLD_HALF_WIDTH } from "../../config";
 import type { FormationType, PartyCommand, PartyRole } from "../../types";
-import { AbilitySystem } from "../abilities/AbilitySystem";
 import { abilityDefinitions } from "../abilities/abilityDefinitions";
-import type { AbilityResult, AbilityTarget } from "../abilities/types";
+import { CombatSimulation } from "../combat/CombatSimulation";
+import { roleStats } from "../combat/combatBalance";
+import { abilityCatalog, starterAbilityLoadouts } from "../combat/abilityCatalog";
+import type { AbilityId, CombatRole, CombatStance, UnitStats } from "../combat/types";
 import { PartyGroup } from "./PartyGroup";
 import { PartyMember } from "./PartyMember";
 
@@ -11,11 +13,13 @@ export class PartyController {
   readonly group = new THREE.Group();
   private readonly moveInput = new THREE.Vector2();
   private readonly membersInternal: PartyMember[];
-  private readonly abilitySystem: AbilitySystem;
+  private readonly enemiesInternal: PartyMember[];
+  readonly combat = new CombatSimulation();
   private readonly mainGroup: PartyGroup;
   private readonly groupsInternal: PartyGroup[];
   private lastFormationMessage = "Triangle formation";
   private groupSequence = 0;
+  private combatAccumulator = 0;
   private moving = false;
 
   constructor() {
@@ -36,7 +40,22 @@ export class PartyController {
     this.mainGroup.position.x = -WORLD_HALF_WIDTH + 12;
     this.groupsInternal = [this.mainGroup];
     this.group.add(this.mainGroup.group);
-    this.abilitySystem = new AbilitySystem(() => this.membersInternal);
+    this.mainGroup.update(0);
+    this.combat.addGroup("main", "party", "balanced", "player-1");
+    this.membersInternal.forEach((member) => this.addCombatMember(member, "party", "main"));
+    this.combat.addGroup("enemy-main", "enemy", "aggressive", "cpu-1");
+    this.enemiesInternal = [
+      this.createMember("enemy-melee-1", "Raider", "melee", abilityDefinitions.meleeWhirlwind),
+      this.createMember("enemy-ranged-1", "Hexer", "ranged", abilityDefinitions.rangedFireball),
+      this.createMember("enemy-tank-1", "Brute", "tank", abilityDefinitions.tankTaunt),
+      this.createMember("enemy-healer-1", "Acolyte", "healer", abilityDefinitions.healerHeal),
+    ];
+    this.enemiesInternal.forEach((member, index) => {
+      member.position.set(-WORLD_HALF_WIDTH + 27 + index * 1.5, 0, index % 2 === 0 ? -2 : 2);
+      this.group.add(member.group);
+      member.refreshWorldPosition();
+      this.addCombatMember(member, "enemy", "enemy-main");
+    });
   }
 
   get position() {
@@ -46,6 +65,8 @@ export class PartyController {
   get members() {
     return this.membersInternal;
   }
+
+  get enemies() { return this.enemiesInternal; }
 
   get groups() {
     return this.groupsInternal;
@@ -82,7 +103,21 @@ export class PartyController {
     this.moving = this.moveInput.lengthSq() > 0;
     this.mainGroup.update(dt, this.moveInput);
     this.groupsInternal.filter((partyGroup) => !partyGroup.isMain).forEach((partyGroup) => partyGroup.update(dt, this.moveInput));
-    this.abilitySystem.update(dt);
+    this.membersInternal.forEach((member) => {
+      member.refreshWorldPosition();
+      if (!member.inCombat) this.combat.setUnitHome(member.id, { x: member.worldPosition.x, z: member.worldPosition.z });
+      this.combat.setUnitPosition(member.id, { x: member.worldPosition.x, z: member.worldPosition.z });
+    });
+    this.enemiesInternal.forEach((member) => {
+      member.refreshWorldPosition();
+      this.combat.setUnitPosition(member.id, { x: member.worldPosition.x, z: member.worldPosition.z });
+    });
+    this.combatAccumulator = Math.min(this.combatAccumulator + dt, 0.2);
+    while (this.combatAccumulator >= 1 / 30) {
+      this.combat.update(1 / 30);
+      this.combatAccumulator -= 1 / 30;
+    }
+    [...this.membersInternal, ...this.enemiesInternal].forEach((member) => this.syncCombatMember(member));
   }
 
   isMoving() {
@@ -114,6 +149,7 @@ export class PartyController {
       const localPosition = this.mainGroup.group.worldToLocal(worldPositions.get(member.id)?.clone() ?? new THREE.Vector3());
       this.mainGroup.addMembers([member]);
       member.position.copy(localPosition);
+      this.combat.setUnitGroup(member.id, this.mainGroup.id);
     }
     this.mainGroup.sortMembers((left, right) => this.membersInternal.indexOf(left) - this.membersInternal.indexOf(right));
     this.group.remove(detachedGroup.group);
@@ -121,27 +157,35 @@ export class PartyController {
     this.lastFormationMessage = "Party reunited";
   }
 
-  useRoleAbility(role: PartyRole, target?: AbilityTarget) {
-    const member = this.membersInternal.find((candidate) => candidate.role === role);
-    const ability = member?.abilities[0];
-    if (!member || !ability) {
-      return;
-    }
-    const result = this.abilitySystem.use(member, ability, target);
-    this.lastFormationMessage = result.message;
-    return result;
+  setStance(groupId: string, stance: CombatStance) {
+    this.combat.setGroupStance(groupId, stance);
+    this.lastFormationMessage = `${stance.charAt(0).toUpperCase()}${stance.slice(1)} stance`;
   }
 
-  getAbilityCooldown(member: PartyMember) {
-    return this.abilitySystem.getCooldown(member, member.abilities[0]);
+  recallGroup(groupId: string) {
+    this.combat.recallGroup(groupId);
+    this.lastFormationMessage = "Returning to formation";
+  }
+
+  getGroupStance(groupId: string): CombatStance {
+    return this.combat.groups.get(groupId)?.stance ?? "balanced";
+  }
+
+  getAbilityStatus(memberId: string) {
+    const unit = this.combat.units.get(memberId);
+    if (!unit) return "";
+    return unit.abilities.map((id) => {
+      const cooldown = unit.cooldowns[id];
+      return cooldown > 0 ? `${abilityCatalog[id].label} ${cooldown.toFixed(1)}s` : `${abilityCatalog[id].label} ready`;
+    }).join(" · ");
+  }
+
+  configureMember(memberId: string, config: { stats?: Partial<UnitStats>; abilities?: AbilityId[] }) {
+    return this.combat.configureUnit(memberId, config);
   }
 
   getLowestHealthMember() {
     return this.membersInternal.reduce((lowest, member) => (member.health < lowest.health ? member : lowest));
-  }
-
-  getAbilityResultMessage(result: AbilityResult | undefined) {
-    return result?.message ?? this.lastFormationMessage;
   }
 
   private detachRole(role: PartyRole) {
@@ -155,11 +199,32 @@ export class PartyController {
     detachedGroup.addMembers(members);
     this.groupsInternal.push(detachedGroup);
     this.group.add(detachedGroup.group);
+    this.combat.addGroup(detachedGroup.id, "party", this.getGroupStance("main"), "player-1");
+    members.forEach((member) => this.combat.setUnitGroup(member.id, detachedGroup.id));
     return detachedGroup;
   }
 
   private groupForRole(role: PartyRole) {
     return this.groupsInternal.find((partyGroup) => partyGroup.containsRole(role));
+  }
+
+  private addCombatMember(member: PartyMember, faction: "party" | "enemy", groupId: string) {
+    const role = member.role as CombatRole;
+    this.combat.addUnit({ id: member.id, name: member.displayName, faction, role, groupId, position: { x: member.worldPosition.x, z: member.worldPosition.z }, stats: roleStats[role], abilities: starterAbilityLoadouts[role] });
+  }
+
+  private syncCombatMember(member: PartyMember) {
+    const state = this.combat.units.get(member.id);
+    if (!state) return;
+    const parent = member.group.parent;
+    if (parent) {
+      parent.updateMatrixWorld(true);
+      const local = parent.worldToLocal(new THREE.Vector3(state.position.x, 0, state.position.z));
+      member.position.copy(local);
+    } else {
+      member.position.set(state.position.x, 0, state.position.z);
+    }
+    member.syncCombat({ health: state.health, maxHealth: state.maxHealth, energy: state.energy, maxEnergy: state.maxEnergy, threat: state.threat, action: state.action, inCombat: state.targetId !== null || state.action !== "idle" });
   }
 
   private createMember(id: string, displayName: string, role: PartyRole, ability: PartyMember["abilities"][number]) {

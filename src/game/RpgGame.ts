@@ -4,6 +4,7 @@ import { vecToTuple } from "../lib/math";
 import { materials } from "../render/materials";
 import type { RpgDiagnostics } from "../types";
 import { CameraRig } from "./camera/CameraRig";
+import { CombatEffectsRenderer } from "./combat/CombatEffectsRenderer";
 import { GameInput } from "./input/GameInput";
 import { PartyController } from "./party/PartyController";
 import { WorldScene } from "./world/WorldScene";
@@ -17,6 +18,7 @@ export class RpgGame {
   private readonly clock = new THREE.Clock();
   private readonly world = new WorldScene();
   private readonly party = new PartyController();
+  private readonly combatEffects = new CombatEffectsRenderer(this.party.combat);
   private readonly cameraRig: CameraRig;
   private readonly input: GameInput;
   private readonly hud: Hud;
@@ -37,13 +39,14 @@ export class RpgGame {
       isPaused: () => this.paused,
       setMoveInput: (input) => this.party.setMoveInput(input),
       issueRoleCommand: (role, command, target) => this.party.issueRoleCommand(role, command, target),
-      useRoleAbility: (role) => this.party.useRoleAbility(role),
       setGesturePreview: (preview) => this.hud.setGesturePreview(preview),
       togglePaused: () => this.togglePaused(),
     });
     this.hud = new Hud(this.party, {
       setFormation: (groupId, formation) => this.party.setFormation(groupId, formation),
       returnGroup: (groupId) => this.party.returnGroup(groupId),
+      setStance: (groupId, stance) => this.party.setStance(groupId, stance),
+      recallGroup: (groupId) => this.party.recallGroup(groupId),
       setCameraAngle: (angle) => this.cameraRig.setVerticalAngle(angle),
       setCameraHeight: (height) => this.cameraRig.setHeight(height),
       setCameraFov: (fov) => this.cameraRig.setFov(fov),
@@ -74,19 +77,25 @@ export class RpgGame {
           isMain: group.isMain,
           position: vecToTuple(group.position),
           formation: group.formation,
+          stance: this.party.getGroupStance(group.id),
           memberIds: group.members.map((member) => member.id),
         })),
-        members: this.party.members.map((member) => ({
-          id: member.id,
-          role: member.role,
-          position: vecToTuple(member.worldPosition),
-          health: member.health,
-          maxHealth: member.maxHealth,
-          ability: {
-            id: member.abilities[0].id,
-            cooldownRemaining: this.party.getAbilityCooldown(member),
-          },
-        })),
+        members: this.party.members.map((member) => {
+          const combatMember = this.party.combat.units.get(member.id);
+          return {
+            id: member.id,
+            role: member.role,
+            position: vecToTuple(member.worldPosition),
+            health: member.health,
+            maxHealth: member.maxHealth,
+            energy: member.energy,
+            maxEnergy: member.maxEnergy,
+            threat: member.threat,
+            action: member.action,
+            stats: combatMember?.stats ?? { stamina: 0, strength: 0, agility: 0, intelligence: 0, wisdom: 0, awareness: 0 },
+            abilities: (combatMember?.abilities ?? []).map((id) => ({ id, cooldownRemaining: combatMember?.cooldowns[id] ?? 0 })),
+          };
+        }),
       },
       camera: {
         position: vecToTuple(this.camera.position),
@@ -107,6 +116,7 @@ export class RpgGame {
     window.cancelAnimationFrame(this.animationFrame);
     window.removeEventListener("resize", this.cameraRig.resize);
     this.input.dispose();
+    this.combatEffects.dispose();
     this.renderer.dispose();
     this.container.replaceChildren();
   }
@@ -134,7 +144,7 @@ export class RpgGame {
     sun.shadow.camera.bottom = -42;
     this.scene.add(sun);
 
-    this.scene.add(this.world.group, this.party.group);
+    this.scene.add(this.world.group, this.party.group, this.combatEffects.group);
   }
 
   private readonly tick = () => {
@@ -144,6 +154,8 @@ export class RpgGame {
     if (!this.paused) {
       this.input.update();
       this.party.update(dt);
+      this.combatEffects.consume(this.party.combat.consumeEvents());
+      this.combatEffects.update(dt);
     }
 
     this.cameraRig.update(dt, this.party.position);

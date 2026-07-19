@@ -15,9 +15,14 @@ export class PartyMember {
   readonly group = new THREE.Group();
   readonly position = this.group.position;
   readonly worldPosition = new THREE.Vector3();
-  readonly maxHealth = 100;
+  maxHealth = 100;
   readonly abilities: readonly AbilityDefinition[];
   health = 100;
+  energy = 100;
+  maxEnergy = 100;
+  threat = 0;
+  action = "idle";
+  inCombat = false;
 
   constructor(private readonly config: PartyMemberConfig) {
     this.group.name = config.id;
@@ -47,6 +52,16 @@ export class PartyMember {
 
   refreshWorldPosition() {
     this.group.getWorldPosition(this.worldPosition);
+  }
+
+  syncCombat(state: { health: number; maxHealth: number; energy: number; maxEnergy: number; threat: number; action: string; inCombat: boolean }) {
+    this.health = state.health;
+    this.maxHealth = state.maxHealth;
+    this.energy = state.energy;
+    this.maxEnergy = state.maxEnergy;
+    this.threat = state.threat;
+    this.action = state.action;
+    this.inCombat = state.inCombat;
   }
 
   private buildMesh() {

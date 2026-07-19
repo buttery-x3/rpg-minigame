@@ -126,6 +126,9 @@ export class PartyGroup {
 
   private applyFormation(dt: number) {
     for (const member of this.membersInternal) {
+      if (member.inCombat) {
+        continue;
+      }
       const slot = this.formationSlots.get(member.id) ?? new THREE.Vector3();
       const desiredLocal = slot.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), this.heading);
       member.update(dt, desiredLocal);

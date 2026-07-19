@@ -60,6 +60,11 @@ async function verifyInBrowser() {
       await page.locator('[data-party-group="main"] .party-panel__header').click();
       const panelClickStartedGesture = (await readDiagnostics(page)).input.gesture.active;
       const cameraPanelHiddenOnLoad = await page.locator(".camera-panel").evaluate((panel) => panel.hidden);
+      const stanceButtonCount = await page.locator('[data-party-group="main"] button[data-stance]').count();
+      await page.locator('[data-party-group="main"] button[data-stance="aggressive"]').click();
+      const aggressiveStance = (await readDiagnostics(page)).party.groups.find((group) => group.id === "main")?.stance;
+      await page.locator('[data-party-group="main"] .party-panel__recall').click();
+      const defensiveAfterRecall = (await readDiagnostics(page)).party.groups.find((group) => group.id === "main")?.stance;
       await page.locator("[data-camera-toggle]").click();
       const cameraPanelVisibleAfterToggle = await page.locator(".camera-panel:not([hidden])").count();
       await page.locator("[data-camera-angle]").evaluate((input) => {
@@ -142,6 +147,9 @@ async function verifyInBrowser() {
         movementDistance,
         panelClickStartedGesture,
         cameraPanelHiddenOnLoad,
+        stanceButtonCount,
+        aggressiveStance,
+        defensiveAfterRecall,
         cameraPanelVisibleAfterToggle,
         cameraControlDelta: Math.abs(afterCameraControl.camera.position[2] - before.camera.position[2]),
         formationAfter,
@@ -238,7 +246,8 @@ async function collectHudMetrics(page) {
       hasMainPanel: mainPanel instanceof HTMLElement && getComputedStyle(mainPanel).display !== "none",
       formationButtonCount: mainPanel?.querySelectorAll("button[data-formation]").length ?? 0,
       hasParty: normalizedText.includes("party") && normalizedText.includes("tank") && normalizedText.includes("healer"),
-      hasPlayerStamina: normalizedText.includes("sta"),
+      hasEnergyMeter: mainPanel?.querySelectorAll("[data-member-energy-bar]").length === 10,
+      hasAbilityStatus: normalizedText.includes("backstab") && normalizedText.includes("healing circle"),
       hasQuest: normalizedText.includes("old gate"),
     };
   });
@@ -247,7 +256,7 @@ async function collectHudMetrics(page) {
 function assertResult(result) {
   const { viewport, metrics, hud, errors, movementDistance } = result;
   const usablePixels = metrics.nonDark > 1400 && metrics.bright > 8 && metrics.colorBuckets > 18;
-  const hudOk = hud.hasHud && hud.hasMainPanel && hud.formationButtonCount === 5 && hud.hasParty && !hud.hasPlayerStamina && hud.hasQuest;
+  const hudOk = hud.hasHud && hud.hasMainPanel && hud.formationButtonCount === 5 && hud.hasParty && hud.hasEnergyMeter && hud.hasAbilityStatus && hud.hasQuest;
 
   if (!usablePixels) {
     throw new Error(`${viewport.name} canvas looked blank or too flat: ${JSON.stringify(metrics)}`);
@@ -266,6 +275,9 @@ function assertResult(result) {
   }
   if (!result.cameraPanelHiddenOnLoad || result.cameraPanelVisibleAfterToggle !== 1) {
     throw new Error(`${viewport.name} camera panel toggle did not work`);
+  }
+  if (result.stanceButtonCount !== 3 || result.aggressiveStance !== "aggressive" || result.defensiveAfterRecall !== "defensive") {
+    throw new Error(`${viewport.name} stance or recall controls did not update combat state`);
   }
   if (result.formationAfter.party.formation !== "horizontal-line") {
     throw new Error(`${viewport.name} formation button did not select horizontal-line`);

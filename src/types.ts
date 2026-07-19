@@ -27,6 +27,7 @@ export type RpgDiagnostics = {
       isMain: boolean;
       position: Vec3Tuple;
       formation: FormationType;
+      stance: "aggressive" | "balanced" | "defensive";
       memberIds: string[];
     }>;
     members: Array<{
@@ -35,10 +36,22 @@ export type RpgDiagnostics = {
       position: Vec3Tuple;
       health: number;
       maxHealth: number;
-      ability: {
+      energy: number;
+      maxEnergy: number;
+      threat: number;
+      action: string;
+      stats: {
+        stamina: number;
+        strength: number;
+        agility: number;
+        intelligence: number;
+        wisdom: number;
+        awareness: number;
+      };
+      abilities: Array<{
         id: string;
         cooldownRemaining: number;
-      };
+      }>;
     }>;
   };
   camera: {
