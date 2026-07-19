@@ -37,6 +37,7 @@ export class RpgGame {
       isPaused: () => this.paused,
       setMoveInput: (input) => this.party.setMoveInput(input),
       issueRoleCommand: (role, command, target) => this.party.issueRoleCommand(role, command, target),
+      useRoleAbility: (role) => this.party.useRoleAbility(role),
       setGesturePreview: (preview) => this.hud.setGesturePreview(preview),
       togglePaused: () => this.togglePaused(),
     });

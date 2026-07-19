@@ -9,9 +9,7 @@ import { PartyMember } from "./PartyMember";
 import { buildFormationSlots } from "./FormationLayouts";
 
 type RoleOrder = {
-  command: PartyCommand;
-  target?: THREE.Vector3;
-  holdTargets?: Map<string, THREE.Vector3>;
+  target: THREE.Vector3;
 };
 
 export class PartyController {
@@ -108,21 +106,7 @@ export class PartyController {
   }
 
   issueRoleCommand(role: PartyRole, command: PartyCommand, target: THREE.Vector3) {
-    const roleMembers = this.membersForRole(role);
-    if (command === "return") {
-      this.roleOrders.delete(role);
-      return;
-    }
-
-    if (command === "hold") {
-      this.roleOrders.set(role, {
-        command,
-        holdTargets: new Map(roleMembers.map((member) => [member.id, member.worldPosition.clone()])),
-      });
-      return;
-    }
-
-    this.roleOrders.set(role, { command, target: target.clone() });
+    this.roleOrders.set(role, { target: target.clone() });
   }
 
   useRoleAbility(role: PartyRole, target?: AbilityTarget) {
@@ -160,11 +144,7 @@ export class PartyController {
   }
 
   private desiredWorldPosition(member: PartyMember, roleOrder: RoleOrder | undefined) {
-    if (roleOrder?.command === "hold") {
-      return roleOrder.holdTargets?.get(member.id)?.clone() ?? member.worldPosition.clone();
-    }
-
-    if (roleOrder?.command === "move" && roleOrder.target) {
+    if (roleOrder) {
       const roleMembers = this.membersForRole(member.role);
       const index = roleMembers.findIndex((candidate) => candidate.id === member.id);
       const offset = new THREE.Vector3((index - (roleMembers.length - 1) / 2) * 1.05, 0, 0);
@@ -179,9 +159,7 @@ export class PartyController {
 
   private translateMoveOrders(delta: THREE.Vector3) {
     for (const order of this.roleOrders.values()) {
-      if (order.command === "move" && order.target) {
-        order.target.add(delta);
-      }
+      order.target.add(delta);
     }
   }
 

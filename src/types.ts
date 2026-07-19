@@ -1,14 +1,14 @@
 export type Vec3Tuple = [number, number, number];
 
 export type PartyRole = "tank" | "melee" | "ranged" | "healer";
-export type PartyCommand = "move" | "hold" | "return";
-export type GestureCommand = PartyCommand | "cancel";
+export type PartyCommand = "move";
+export type GestureIntent = PartyCommand | "attention";
 export type FormationType = "triangle" | "tight-circle" | "loose-circle" | "horizontal-line" | "vertical-line";
 
 export type GesturePreview = {
   active: boolean;
   role: PartyRole | null;
-  command: GestureCommand | null;
+  intent: GestureIntent | null;
   screenX: number;
   screenY: number;
 };

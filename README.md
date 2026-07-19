@@ -36,7 +36,7 @@ The deployment script pulls the latest fast-forwardable commit, installs depende
 - Camera-relative WASD movement and facing for a ten-member party: two tanks, three melee DPS, three ranged DPS, and two healers.
 - Triangle, tight circle, loose circle, horizontal line, and vertical line formation controls.
 - Party portraits with individual health bars and role-colored in-world units.
-- Hold left click and gesture toward a role, then choose a Move, Hold, or Return command for that role group.
+- Hold left click and gesture up for Move here or down for Attention, then choose a role group using 🛡️, ⚔️, 🧙, or ➕.
 - A reusable ability system with prototype Taunt, Whirlwind, Fireball, and Heal abilities, currently kept out of the formation HUD.
 - No enemy implementation yet; ability effects are emitted as combat events for the next pass.
 - Simple modular game loop, input, party, ability, test-world, camera, and HUD classes.

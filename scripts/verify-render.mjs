@@ -63,15 +63,15 @@ async function verifyInBrowser() {
       await page.mouse.down();
       await page.mouse.move(viewport.width * 0.5, viewport.height * 0.4);
       await page.waitForTimeout(80);
-      const roleMenuVisible = await page.locator('[data-gesture-menu]:not([hidden])').count();
+      const intentMenuVisible = await page.locator('[data-gesture-menu]:not([hidden])').count();
       const anchoredMenuPosition = await page.locator('[data-gesture-menu]').evaluate((element) => ({
         left: getComputedStyle(element).left,
         top: getComputedStyle(element).top,
       }));
-      const roleLabelsVisible = await page.locator('[data-gesture-menu]:not([hidden]) .gesture-menu__roles:visible').count();
+      const intentLabelsVisible = await page.locator('[data-gesture-menu]:not([hidden]) .gesture-menu__intents:visible').count();
       await page.mouse.move(viewport.width * 0.5 + 80, viewport.height * 0.4 - 80);
       await page.waitForTimeout(80);
-      const commandMenuVisible = await page.locator('[data-gesture-commands]:not([hidden])').count();
+      const roleMenuVisible = await page.locator('[data-gesture-menu]:not([hidden]) .gesture-menu__roles:visible').count();
       const nestedMenuPosition = await page.locator('[data-gesture-menu]').evaluate((element) => ({
         left: getComputedStyle(element).left,
         top: getComputedStyle(element).top,
@@ -117,9 +117,9 @@ async function verifyInBrowser() {
         errors,
         movementDistance,
         formationAfter,
+        intentMenuVisible,
         roleMenuVisible,
-        commandMenuVisible,
-        roleLabelsVisible,
+        intentLabelsVisible,
         anchoredMenuPosition,
         nestedMenuPosition,
         diagonalGesture,
@@ -239,11 +239,11 @@ function assertResult(result) {
   if (roleCounts.tank !== 2 || roleCounts.melee !== 3 || roleCounts.ranged !== 3 || roleCounts.healer !== 2) {
     throw new Error(`${viewport.name} role counts were incorrect: ${JSON.stringify(roleCounts)}`);
   }
-  if (result.roleMenuVisible === 0 || result.commandMenuVisible === 0) {
-    throw new Error(`${viewport.name} gesture menus did not open: role=${result.roleMenuVisible}, command=${result.commandMenuVisible}`);
+  if (result.intentMenuVisible === 0 || result.roleMenuVisible === 0) {
+    throw new Error(`${viewport.name} gesture menus did not open: intent=${result.intentMenuVisible}, role=${result.roleMenuVisible}`);
   }
-  if (result.roleLabelsVisible !== 0) {
-    throw new Error(`${viewport.name} role labels remained visible in the command ring`);
+  if (result.intentLabelsVisible !== 0) {
+    throw new Error(`${viewport.name} intent labels remained visible in the role ring`);
   }
   if (
     result.anchoredMenuPosition.left !== result.nestedMenuPosition.left ||
@@ -251,8 +251,8 @@ function assertResult(result) {
   ) {
     throw new Error(`${viewport.name} gesture menu moved during selection`);
   }
-  if (result.diagonalGesture.input.gesture.command !== null) {
-    throw new Error(`${viewport.name} diagonal gesture selected ${result.diagonalGesture.input.gesture.command}`);
+  if (result.diagonalGesture.input.gesture.role !== null) {
+    throw new Error(`${viewport.name} diagonal second-ring gesture selected ${result.diagonalGesture.input.gesture.role}`);
   }
   if (result.maxMemberDeltaDuringCommandWasd > 6) {
     throw new Error(`${viewport.name} a member warped during WASD movement: ${result.maxMemberDeltaDuringCommandWasd}`);

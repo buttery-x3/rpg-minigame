@@ -56,18 +56,16 @@ export class Hud {
       </section>
       <nav class="action-bar" aria-label="Formations"></nav>
       <div class="gesture-menu" data-gesture-menu hidden>
-        <div class="gesture-menu__title" data-gesture-title>Choose a role</div>
+        <div class="gesture-menu__title" data-gesture-title>Choose an order</div>
         <div class="gesture-menu__roles">
-          <span data-gesture-role="tank">Tank</span>
-          <span data-gesture-role="melee">Melee</span>
-          <span data-gesture-role="ranged">Ranged</span>
-          <span data-gesture-role="healer">Healer</span>
+          <span data-gesture-role="tank" aria-label="Tank">🛡️</span>
+          <span data-gesture-role="melee" aria-label="Melee">⚔️</span>
+          <span data-gesture-role="ranged" aria-label="Ranged">🧙</span>
+          <span data-gesture-role="healer" aria-label="Healer">➕</span>
         </div>
-        <div class="gesture-menu__commands" data-gesture-commands hidden>
-          <span data-gesture-command="move">Move</span>
-          <span data-gesture-command="hold">Hold</span>
-          <span data-gesture-command="return">Return</span>
-          <span data-gesture-command="cancel">Cancel</span>
+        <div class="gesture-menu__intents" data-gesture-intents>
+          <span data-gesture-intent="move">Move here</span>
+          <span data-gesture-intent="attention">Attention</span>
         </div>
       </div>
     `;
@@ -144,16 +142,16 @@ export class Hud {
 
     this.gestureMenu.style.left = `${preview.screenX}px`;
     this.gestureMenu.style.top = `${preview.screenY}px`;
-    this.gestureMenu.classList.toggle("gesture-menu--nested", preview.role !== null);
-    this.gestureTitle.textContent = preview.role ? `${roleLabels[preview.role]} command` : "Choose a role";
+    this.gestureMenu.classList.toggle("gesture-menu--nested", preview.intent !== null);
+    this.gestureTitle.textContent = preview.intent ? "Choose a role" : "Choose an order";
     this.gestureMenu.querySelectorAll<HTMLElement>("[data-gesture-role]").forEach((element) => {
       element.classList.toggle("is-selected", element.dataset.gestureRole === preview.role);
     });
-    this.gestureMenu.querySelectorAll<HTMLElement>("[data-gesture-command]").forEach((element) => {
-      element.classList.toggle("is-selected", element.dataset.gestureCommand === preview.command);
+    this.gestureMenu.querySelectorAll<HTMLElement>("[data-gesture-intent]").forEach((element) => {
+      element.classList.toggle("is-selected", element.dataset.gestureIntent === preview.intent);
     });
-    const commands = this.requireFrom<HTMLElement>(this.gestureMenu, "[data-gesture-commands]");
-    commands.hidden = preview.role === null;
+    const intents = this.requireFrom<HTMLElement>(this.gestureMenu, "[data-gesture-intents]");
+    intents.hidden = preview.intent !== null;
   }
 
   private require<T extends Element>(selector: string) {

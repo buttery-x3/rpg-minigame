@@ -292,17 +292,25 @@ canvas {
 }
 
 .gesture-menu__roles,
-.gesture-menu__commands {
+.gesture-menu__intents {
   position: absolute;
   inset: 0;
 }
 
+.gesture-menu__roles {
+  display: none;
+}
+
 .gesture-menu--nested .gesture-menu__roles {
+  display: block;
+}
+
+.gesture-menu--nested .gesture-menu__intents {
   display: none;
 }
 
 .gesture-menu__roles span,
-.gesture-menu__commands span {
+.gesture-menu__intents span {
   position: absolute;
   padding: 4px 6px;
   border-radius: 4px;
@@ -311,35 +319,38 @@ canvas {
 }
 
 .gesture-menu__roles span:nth-child(1),
-.gesture-menu__commands span:nth-child(1) {
+.gesture-menu__intents span:nth-child(1) {
   top: 39px;
   left: 50%;
   transform: translateX(-50%);
 }
 
-.gesture-menu__roles span:nth-child(2),
-.gesture-menu__commands span:nth-child(2) {
+.gesture-menu__roles span:nth-child(2) {
   top: 50%;
   right: 10px;
   transform: translateY(-50%);
 }
 
-.gesture-menu__roles span:nth-child(3),
-.gesture-menu__commands span:nth-child(3) {
-  bottom: 39px;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.gesture-menu__roles span:nth-child(4),
-.gesture-menu__commands span:nth-child(4) {
+.gesture-menu__roles span:nth-child(3) {
   top: 50%;
   left: 10px;
   transform: translateY(-50%);
 }
 
+.gesture-menu__roles span:nth-child(4) {
+  bottom: 39px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.gesture-menu__intents span:nth-child(2) {
+  bottom: 39px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
 .gesture-menu__roles span.is-selected,
-.gesture-menu__commands span.is-selected {
+.gesture-menu__intents span.is-selected {
   background: #e6c06a;
   color: #182028;
   font-weight: 800;

@@ -1,12 +1,13 @@
 import * as THREE from "three";
 import { WORLD_BOUNDS } from "../../config";
 import { clamp } from "../../lib/math";
-import type { GestureCommand, GesturePreview, PartyCommand, PartyRole } from "../../types";
+import type { GestureIntent, GesturePreview, PartyCommand, PartyRole } from "../../types";
 
 type InputCallbacks = {
   isPaused: () => boolean;
   setMoveInput: (input: THREE.Vector2) => void;
   issueRoleCommand: (role: PartyRole, command: PartyCommand, target: THREE.Vector3) => void;
+  useRoleAbility: (role: PartyRole) => void;
   setGesturePreview: (preview: GesturePreview) => void;
   togglePaused: () => void;
 };
@@ -28,9 +29,10 @@ export class GameInput {
   private pressedPointerId: number | null = null;
   private hasPointerClient = false;
   private gestureRole: PartyRole | null = null;
-  private gestureCommand: GestureCommand | null = null;
+  private gestureIntent: GestureIntent | null = null;
   private gestureStart = new THREE.Vector2();
-  private commandStart = new THREE.Vector2();
+  private gestureTarget = new THREE.Vector3();
+  private roleStart = new THREE.Vector2();
 
   constructor(
     private readonly camera: THREE.Camera,
@@ -75,7 +77,7 @@ export class GameInput {
     return {
       active: this.pressedPointerId !== null,
       role: this.gestureRole,
-      command: this.gestureCommand,
+      intent: this.gestureIntent,
       screenX: this.gestureStart.x,
       screenY: this.gestureStart.y,
     } satisfies GesturePreview;
@@ -120,9 +122,10 @@ export class GameInput {
     this.updatePointerWorld(event);
     this.pressedPointerId = event.pointerId;
     this.gestureRole = null;
-    this.gestureCommand = null;
+    this.gestureIntent = null;
     this.gestureStart.set(event.clientX, event.clientY);
-    this.commandStart.copy(this.gestureStart);
+    this.gestureTarget.copy(this.pointerWorld);
+    this.roleStart.copy(this.gestureStart);
     this.emitGesturePreview();
   };
 
@@ -145,13 +148,15 @@ export class GameInput {
       return;
     }
 
-    if (this.gestureRole && this.gestureCommand && this.gestureCommand !== "cancel") {
-      this.callbacks.issueRoleCommand(this.gestureRole, this.gestureCommand, this.pointerWorld.clone());
+    if (this.gestureRole && this.gestureIntent === "move") {
+      this.callbacks.issueRoleCommand(this.gestureRole, "move", this.gestureTarget.clone());
+    } else if (this.gestureRole && this.gestureIntent === "attention") {
+      this.callbacks.useRoleAbility(this.gestureRole);
     }
 
     this.pressedPointerId = null;
     this.gestureRole = null;
-    this.gestureCommand = null;
+    this.gestureIntent = null;
     this.emitGesturePreview();
   };
 
@@ -160,21 +165,21 @@ export class GameInput {
   };
 
   private updateGesture(event: PointerEvent) {
-    if (!this.gestureRole) {
+    if (!this.gestureIntent) {
       const distance = Math.hypot(event.clientX - this.gestureStart.x, event.clientY - this.gestureStart.y);
       if (distance >= GESTURE_THRESHOLD) {
-        const role = this.roleFromDirection(event.clientX - this.gestureStart.x, event.clientY - this.gestureStart.y);
-        if (role) {
-          this.gestureRole = role;
-          this.commandStart.set(event.clientX, event.clientY);
+        const intent = this.intentFromDirection(event.clientX - this.gestureStart.x, event.clientY - this.gestureStart.y);
+        if (intent) {
+          this.gestureIntent = intent;
+          this.roleStart.set(event.clientX, event.clientY);
         }
       }
       return;
     }
 
-    const distance = Math.hypot(event.clientX - this.commandStart.x, event.clientY - this.commandStart.y);
+    const distance = Math.hypot(event.clientX - this.roleStart.x, event.clientY - this.roleStart.y);
     if (distance >= GESTURE_THRESHOLD) {
-      this.gestureCommand = this.commandFromDirection(event.clientX - this.commandStart.x, event.clientY - this.commandStart.y);
+      this.gestureRole = this.roleFromDirection(event.clientX - this.roleStart.x, event.clientY - this.roleStart.y);
     }
   }
 
@@ -193,19 +198,17 @@ export class GameInput {
     return roles[direction];
   }
 
-  private commandFromDirection(x: number, y: number): GestureCommand | null {
+  private intentFromDirection(x: number, y: number): GestureIntent | null {
     const direction = this.nearestCardinalDirection(x, y);
     if (!direction) {
       return null;
     }
 
-    const commands: Record<"right" | "left" | "up" | "down", GestureCommand> = {
-      right: "hold",
-      left: "cancel",
+    const intents: Partial<Record<"right" | "left" | "up" | "down", GestureIntent>> = {
       up: "move",
-      down: "return",
+      down: "attention",
     };
-    return commands[direction];
+    return intents[direction] ?? null;
   }
 
   private nearestCardinalDirection(x: number, y: number): "right" | "left" | "up" | "down" | null {
