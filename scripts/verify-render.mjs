@@ -53,9 +53,16 @@ async function verifyInBrowser() {
       await page.waitForSelector("canvas");
       await page.waitForSelector(".ui-layer");
       await page.waitForSelector(".party-panel");
+      await page.waitForSelector(".camera-panel");
       await page.waitForFunction(() => window.__RPG_GAME__?.getDiagnostics().frameCount > 3);
 
       const before = await readDiagnostics(page);
+      await page.locator("[data-camera-angle]").evaluate((input) => {
+        input.value = "30";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await page.waitForTimeout(80);
+      const afterCameraControl = await readDiagnostics(page);
       await page.locator('.action-bar button[data-formation="horizontal-line"]').click();
       const formationAfter = await readDiagnostics(page);
 
@@ -116,6 +123,7 @@ async function verifyInBrowser() {
         hud,
         errors,
         movementDistance,
+        cameraControlDelta: Math.abs(afterCameraControl.camera.position[2] - before.camera.position[2]),
         formationAfter,
         intentMenuVisible,
         roleMenuVisible,
@@ -225,6 +233,9 @@ function assertResult(result) {
   }
   if (movementDistance < 1.4) {
     throw new Error(`${viewport.name} WASD movement did not move far enough: ${movementDistance}`);
+  }
+  if (result.cameraControlDelta < 5) {
+    throw new Error(`${viewport.name} camera vertical-angle control did not move the camera: ${result.cameraControlDelta}`);
   }
   if (result.formationAfter.party.formation !== "horizontal-line") {
     throw new Error(`${viewport.name} formation button did not select horizontal-line`);

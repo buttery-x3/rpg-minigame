@@ -263,6 +263,47 @@ canvas {
   font-style: normal;
 }
 
+.camera-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: grid;
+  width: 190px;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgb(245 242 233 / 18%);
+  border-radius: 9px;
+  background: rgb(20 27 35 / 88%);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 24%);
+  color: rgb(245 242 233 / 78%);
+  pointer-events: auto;
+}
+
+.camera-panel > strong {
+  color: #fff9dc;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.camera-panel label {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 3px 8px;
+  font-size: 10px;
+}
+
+.camera-panel output {
+  color: #e6c06a;
+  font-variant-numeric: tabular-nums;
+}
+
+.camera-panel input {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: #e6c06a;
+}
+
 .gesture-menu {
   position: fixed;
   display: grid;

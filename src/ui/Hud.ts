@@ -40,6 +40,9 @@ export class Hud {
     private readonly party: PartyController,
     callbacks: {
       setFormation: (formation: FormationType) => void;
+      setCameraAngle: (angle: number) => void;
+      setCameraHeight: (height: number) => void;
+      setCameraFov: (fov: number) => void;
     },
   ) {
     this.element.className = "ui-layer";
@@ -55,6 +58,12 @@ export class Hud {
         <small data-formation-message></small>
       </section>
       <nav class="action-bar" aria-label="Formations"></nav>
+      <section class="camera-panel" aria-label="Camera controls">
+        <strong>Camera</strong>
+        <label>Vertical angle <output data-camera-angle-value>40°</output><input data-camera-angle type="range" min="15" max="75" value="40" step="1" /></label>
+        <label>Height <output data-camera-height-value>26</output><input data-camera-height type="range" min="10" max="50" value="26" step="1" /></label>
+        <label>FOV <output data-camera-fov-value>57°</output><input data-camera-fov type="range" min="30" max="90" value="57" step="1" /></label>
+      </section>
       <div class="gesture-menu" data-gesture-menu hidden>
         <div class="gesture-menu__title" data-gesture-title>Choose an order</div>
         <div class="gesture-menu__roles">
@@ -109,6 +118,10 @@ export class Hud {
       this.formationButtons.set(formation, button);
     });
 
+    this.bindCameraControl("[data-camera-angle]", "[data-camera-angle-value]", (value) => `${value}°`, callbacks.setCameraAngle);
+    this.bindCameraControl("[data-camera-height]", "[data-camera-height-value]", (value) => `${value}`, callbacks.setCameraHeight);
+    this.bindCameraControl("[data-camera-fov]", "[data-camera-fov-value]", (value) => `${value}°`, callbacks.setCameraFov);
+
     this.pauseShade.className = "pause-shade";
     this.pauseShade.textContent = "Paused";
     this.element.append(this.pauseShade);
@@ -156,6 +169,21 @@ export class Hud {
 
   private require<T extends Element>(selector: string) {
     return this.requireFrom<T>(this.element, selector);
+  }
+
+  private bindCameraControl(
+    inputSelector: string,
+    outputSelector: string,
+    format: (value: number) => string,
+    setValue: (value: number) => void,
+  ) {
+    const input = this.require<HTMLInputElement>(inputSelector);
+    const output = this.require<HTMLOutputElement>(outputSelector);
+    input.addEventListener("input", () => {
+      const value = Number(input.value);
+      output.value = format(value);
+      setValue(value);
+    });
   }
 
   private requireFrom<T extends Element>(root: ParentNode, selector: string) {

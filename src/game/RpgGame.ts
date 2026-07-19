@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { WORLD_BOUNDS } from "../config";
+import { CAMERA_FOV, WORLD_BOUNDS } from "../config";
 import { vecToTuple } from "../lib/math";
 import { materials } from "../render/materials";
 import type { RpgDiagnostics } from "../types";
@@ -13,7 +13,7 @@ export class RpgGame {
   private readonly container: HTMLElement;
   private readonly scene = new THREE.Scene();
   private readonly renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-  private readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 250);
+  private readonly camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, 0.1, 250);
   private readonly clock = new THREE.Clock();
   private readonly world = new WorldScene();
   private readonly party = new PartyController();
@@ -43,6 +43,9 @@ export class RpgGame {
     });
     this.hud = new Hud(this.party, {
       setFormation: (formation) => this.party.setFormation(formation),
+      setCameraAngle: (angle) => this.cameraRig.setVerticalAngle(angle),
+      setCameraHeight: (height) => this.cameraRig.setHeight(height),
+      setCameraFov: (fov) => this.cameraRig.setFov(fov),
     });
 
     this.configureRenderer();
