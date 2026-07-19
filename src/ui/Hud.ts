@@ -1,14 +1,15 @@
 import type { FormationType, GesturePreview, PartyRole } from "../types";
 import type { PartyController } from "../game/party/PartyController";
+import type { PartyGroup } from "../game/party/PartyGroup";
 
-const roleLabels: Record<PartyRole, string> = {
+const roleLabels: Partial<Record<PartyRole, string>> = {
   tank: "Tank",
   melee: "Melee DPS",
   ranged: "Ranged DPS",
   healer: "Healer",
 };
 
-const roleColors: Record<PartyRole, string> = {
+const roleColors: Partial<Record<PartyRole, string>> = {
   tank: "#c97967",
   melee: "#e0ae4d",
   ranged: "#74a9d8",
@@ -23,10 +24,26 @@ const formationLabels: Record<FormationType, string> = {
   "vertical-line": "Vertical Line",
 };
 
+const formationIcons: Record<FormationType, string> = {
+  triangle: "△",
+  "tight-circle": "◉",
+  "loose-circle": "○",
+  "horizontal-line": "↔",
+  "vertical-line": "↕",
+};
+
+type GroupPanel = {
+  panel: HTMLElement;
+  title: HTMLElement;
+  count: HTMLElement;
+  list: HTMLElement;
+  formationButtons: Map<FormationType, HTMLButtonElement>;
+};
+
 export class Hud {
   readonly element = document.createElement("div");
 
-  private readonly partyList: HTMLElement;
+  private readonly partyGroups: HTMLElement;
   private readonly locationValue: HTMLElement;
   private readonly stateValue: HTMLElement;
   private readonly formationMessage: HTMLElement;
@@ -34,12 +51,13 @@ export class Hud {
   private readonly gestureMenu: HTMLElement;
   private readonly gestureTitle: HTMLElement;
   private readonly memberCards = new Map<string, { card: HTMLElement; health: HTMLElement; bar: HTMLElement }>();
-  private readonly formationButtons = new Map<FormationType, HTMLButtonElement>();
+  private readonly groupPanels = new Map<string, GroupPanel>();
 
   constructor(
     private readonly party: PartyController,
-    callbacks: {
-      setFormation: (formation: FormationType) => void;
+    private readonly callbacks: {
+      setFormation: (groupId: string, formation: FormationType) => void;
+      returnGroup: (groupId: string) => void;
       setCameraAngle: (angle: number) => void;
       setCameraHeight: (height: number) => void;
       setCameraFov: (fov: number) => void;
@@ -47,17 +65,13 @@ export class Hud {
   ) {
     this.element.className = "ui-layer";
     this.element.innerHTML = `
-      <section class="party-panel" aria-label="Party status">
-        <div class="party-panel__header"><strong>Party</strong><span>10 members</span></div>
-        <div class="party-list" data-party-list></div>
-      </section>
+      <div class="party-panel-stack" data-party-groups></div>
       <section class="quest-panel" aria-label="Quest">
         <span class="quest-panel__label">Old Gate</span>
         <strong data-hud-location></strong>
         <span data-hud-state></span>
         <small data-formation-message></small>
       </section>
-      <nav class="action-bar" aria-label="Formations"></nav>
       <section class="camera-panel" aria-label="Camera controls">
         <strong>Camera</strong>
         <label>Vertical angle <output data-camera-angle-value>40°</output><input data-camera-angle type="range" min="15" max="75" value="40" step="1" /></label>
@@ -79,44 +93,13 @@ export class Hud {
       </div>
     `;
 
-    this.partyList = this.require<HTMLElement>("[data-party-list]");
+    this.partyGroups = this.require<HTMLElement>("[data-party-groups]");
     this.locationValue = this.require<HTMLElement>("[data-hud-location]");
     this.stateValue = this.require<HTMLElement>("[data-hud-state]");
     this.formationMessage = this.require<HTMLElement>("[data-formation-message]");
     this.gestureMenu = this.require<HTMLElement>("[data-gesture-menu]");
     this.gestureTitle = this.require<HTMLElement>("[data-gesture-title]");
-
-    this.party.members.forEach((member) => {
-      const card = document.createElement("div");
-      card.className = "member-card";
-      card.dataset.memberId = member.id;
-      card.innerHTML = `
-        <span class="member-card__portrait" style="--role-color: ${roleColors[member.role]}">${member.displayName.slice(0, 1)}</span>
-        <span class="member-card__details">
-          <strong>${member.displayName}</strong>
-          <small>${roleLabels[member.role]}</small>
-          <span class="member-card__meter"><span data-member-health-bar></span></span>
-        </span>
-        <b data-member-health></b>
-      `;
-      this.partyList.append(card);
-      this.memberCards.set(member.id, {
-        card,
-        health: this.requireFrom(card, "[data-member-health]"),
-        bar: this.requireFrom(card, "[data-member-health-bar]"),
-      });
-    });
-
-    const actionBar = this.require<HTMLElement>(".action-bar");
-    (Object.keys(formationLabels) as FormationType[]).forEach((formation, index) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.dataset.formation = formation;
-      button.innerHTML = `<span>${index + 1}</span><strong>${formationLabels[formation]}</strong>`;
-      button.addEventListener("click", () => callbacks.setFormation(formation));
-      actionBar.append(button);
-      this.formationButtons.set(formation, button);
-    });
+    this.syncGroupPanels();
 
     this.bindCameraControl("[data-camera-angle]", "[data-camera-angle-value]", (value) => `${value}°`, callbacks.setCameraAngle);
     this.bindCameraControl("[data-camera-height]", "[data-camera-height-value]", (value) => `${value}`, callbacks.setCameraHeight);
@@ -128,6 +111,7 @@ export class Hud {
   }
 
   update(paused: boolean) {
+    this.syncGroupPanels();
     this.party.members.forEach((member) => {
       const elements = this.memberCards.get(member.id);
       if (!elements) {
@@ -138,12 +122,20 @@ export class Hud {
       elements.bar.style.width = `${(member.health / member.maxHealth) * 100}%`;
     });
 
+    this.party.groups.forEach((group) => {
+      const panel = this.groupPanels.get(group.id);
+      if (!panel) {
+        return;
+      }
+      panel.title.textContent = this.groupLabel(group);
+      panel.count.textContent = `${group.members.length} members`;
+      group.members.forEach((member) => panel.list.append(this.memberCards.get(member.id)?.card ?? document.createElement("div")));
+      panel.formationButtons.forEach((button, formation) => button.classList.toggle("is-selected", formation === group.formation));
+    });
+
     this.locationValue.textContent = this.party.position.z > 6 ? "Gateward Road" : "Mosswake Field";
     this.stateValue.textContent = this.party.isMoving() ? "Moving with WASD" : "Ready for orders";
     this.formationMessage.textContent = this.party.formationMessage;
-    this.formationButtons.forEach((button, formation) => {
-      button.classList.toggle("is-selected", formation === this.party.formation);
-    });
     this.pauseShade.hidden = !paused;
   }
 
@@ -152,7 +144,6 @@ export class Hud {
     if (!preview.active) {
       return;
     }
-
     this.gestureMenu.style.left = `${preview.screenX}px`;
     this.gestureMenu.style.top = `${preview.screenY}px`;
     this.gestureMenu.classList.toggle("gesture-menu--nested", preview.intent !== null);
@@ -163,20 +154,104 @@ export class Hud {
     this.gestureMenu.querySelectorAll<HTMLElement>("[data-gesture-intent]").forEach((element) => {
       element.classList.toggle("is-selected", element.dataset.gestureIntent === preview.intent);
     });
-    const intents = this.requireFrom<HTMLElement>(this.gestureMenu, "[data-gesture-intents]");
-    intents.hidden = preview.intent !== null;
+    this.requireFrom<HTMLElement>(this.gestureMenu, "[data-gesture-intents]").hidden = preview.intent !== null;
+  }
+
+  private syncGroupPanels() {
+    const liveGroupIds = new Set(this.party.groups.map((group) => group.id));
+    this.groupPanels.forEach((panel, groupId) => {
+      if (!liveGroupIds.has(groupId)) {
+        panel.panel.remove();
+        this.groupPanels.delete(groupId);
+      }
+    });
+    this.party.groups.forEach((group) => this.ensureGroupPanel(group));
+  }
+
+  private ensureGroupPanel(group: PartyGroup) {
+    if (this.groupPanels.has(group.id)) {
+      return;
+    }
+    const panel = document.createElement("section");
+    panel.className = "party-panel";
+    panel.dataset.partyGroup = group.id;
+    panel.innerHTML = `
+      <div class="party-panel__content">
+        <div class="party-panel__header"><strong data-party-title></strong><span data-party-count></span></div>
+        <div class="party-list" data-party-list></div>
+      </div>
+      <nav class="party-panel__formations" aria-label="Party formations"></nav>
+    `;
+    const formations = this.requireFrom<HTMLElement>(panel, ".party-panel__formations");
+    const formationButtons = new Map<FormationType, HTMLButtonElement>();
+    (Object.keys(formationLabels) as FormationType[]).forEach((formation) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.formation = formation;
+      button.title = formationLabels[formation];
+      button.setAttribute("aria-label", formationLabels[formation]);
+      button.textContent = formationIcons[formation];
+      button.addEventListener("click", () => this.callbacks.setFormation(group.id, formation));
+      formations.append(button);
+      formationButtons.set(formation, button);
+    });
+    if (!group.isMain) {
+      const returnButton = document.createElement("button");
+      returnButton.type = "button";
+      returnButton.className = "party-panel__return";
+      returnButton.title = "Return to main party";
+      returnButton.setAttribute("aria-label", "Return to main party");
+      returnButton.textContent = "↩";
+      returnButton.addEventListener("click", () => this.callbacks.returnGroup(group.id));
+      formations.append(returnButton);
+    }
+    this.partyGroups.append(panel);
+    this.groupPanels.set(group.id, {
+      panel,
+      title: this.requireFrom(panel, "[data-party-title]"),
+      count: this.requireFrom(panel, "[data-party-count]"),
+      list: this.requireFrom(panel, "[data-party-list]"),
+      formationButtons,
+    });
+    group.members.forEach((member) => this.ensureMemberCard(member.id));
+  }
+
+  private ensureMemberCard(memberId: string) {
+    if (this.memberCards.has(memberId)) {
+      return;
+    }
+    const member = this.party.members.find((candidate) => candidate.id === memberId);
+    if (!member) {
+      return;
+    }
+    const card = document.createElement("div");
+    card.className = "member-card";
+    card.dataset.memberId = member.id;
+    card.innerHTML = `
+      <span class="member-card__portrait" style="--role-color: ${this.roleColor(member.role)}">${member.displayName.slice(0, 1)}</span>
+      <span class="member-card__details"><strong>${member.displayName}</strong><small>${this.roleLabel(member.role)}</small><span class="member-card__meter"><span data-member-health-bar></span></span></span>
+      <b data-member-health></b>
+    `;
+    this.memberCards.set(member.id, { card, health: this.requireFrom(card, "[data-member-health]"), bar: this.requireFrom(card, "[data-member-health-bar]") });
+  }
+
+  private groupLabel(group: PartyGroup) {
+    return group.isMain ? "Party" : `${group.roles.map((role) => this.roleLabel(role)).join(" / ")} Party`;
+  }
+
+  private roleLabel(role: PartyRole) {
+    return roleLabels[role] ?? role.replace(/[-_]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+
+  private roleColor(role: PartyRole) {
+    return roleColors[role] ?? "#9ba7ad";
   }
 
   private require<T extends Element>(selector: string) {
     return this.requireFrom<T>(this.element, selector);
   }
 
-  private bindCameraControl(
-    inputSelector: string,
-    outputSelector: string,
-    format: (value: number) => string,
-    setValue: (value: number) => void,
-  ) {
+  private bindCameraControl(inputSelector: string, outputSelector: string, format: (value: number) => string, setValue: (value: number) => void) {
     const input = this.require<HTMLInputElement>(inputSelector);
     const output = this.require<HTMLOutputElement>(outputSelector);
     input.addEventListener("input", () => {

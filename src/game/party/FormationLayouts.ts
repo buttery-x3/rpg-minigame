@@ -6,7 +6,6 @@ type FormationMember = {
   role: PartyRole;
 };
 
-const ROLE_ORDER: PartyRole[] = ["tank", "melee", "ranged", "healer"];
 const SLOT_SPACING = 1.05;
 
 export function buildFormationSlots(formation: FormationType, members: readonly FormationMember[]) {
@@ -54,7 +53,7 @@ function buildTriangleSlots(members: readonly FormationMember[]) {
 
 function buildTightCircleSlots(members: readonly FormationMember[]) {
   const slots = new Map<string, THREE.Vector3>();
-  const activeRoles = ROLE_ORDER.filter((role) => members.some((member) => member.role === role));
+  const activeRoles = roleOrder(members);
   const formationDepth = activeRoles.length > 1 ? (activeRoles.length - 1) * SLOT_SPACING : 0;
 
   activeRoles.forEach((role, roleIndex) => {
@@ -108,7 +107,11 @@ function buildVerticalLineSlots(members: readonly FormationMember[]) {
 }
 
 function orderedMembers(members: readonly FormationMember[]) {
-  return ROLE_ORDER.flatMap((role) => members.filter((member) => member.role === role));
+  return roleOrder(members).flatMap((role) => members.filter((member) => member.role === role));
+}
+
+function roleOrder(members: readonly FormationMember[]) {
+  return [...new Set(members.map((member) => member.role))];
 }
 
 function splitIntoTriangleRows(members: FormationMember[]) {

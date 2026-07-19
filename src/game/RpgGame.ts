@@ -42,7 +42,8 @@ export class RpgGame {
       togglePaused: () => this.togglePaused(),
     });
     this.hud = new Hud(this.party, {
-      setFormation: (formation) => this.party.setFormation(formation),
+      setFormation: (groupId, formation) => this.party.setFormation(groupId, formation),
+      returnGroup: (groupId) => this.party.returnGroup(groupId),
       setCameraAngle: (angle) => this.cameraRig.setVerticalAngle(angle),
       setCameraHeight: (height) => this.cameraRig.setHeight(height),
       setCameraFov: (fov) => this.cameraRig.setFov(fov),
@@ -68,6 +69,13 @@ export class RpgGame {
         formation: this.party.formation,
         heading: this.party.headingAngle,
         memberCount: this.party.members.length,
+        groups: this.party.groups.map((group) => ({
+          id: group.id,
+          isMain: group.isMain,
+          position: vecToTuple(group.position),
+          formation: group.formation,
+          memberIds: group.members.map((member) => member.id),
+        })),
         members: this.party.members.map((member) => ({
           id: member.id,
           role: member.role,

@@ -57,13 +57,15 @@ async function verifyInBrowser() {
       await page.waitForFunction(() => window.__RPG_GAME__?.getDiagnostics().frameCount > 3);
 
       const before = await readDiagnostics(page);
+      await page.locator('[data-party-group="main"] .party-panel__header').click();
+      const panelClickStartedGesture = (await readDiagnostics(page)).input.gesture.active;
       await page.locator("[data-camera-angle]").evaluate((input) => {
         input.value = "30";
         input.dispatchEvent(new Event("input", { bubbles: true }));
       });
       await page.waitForTimeout(80);
       const afterCameraControl = await readDiagnostics(page);
-      await page.locator('.action-bar button[data-formation="horizontal-line"]').click();
+      await page.locator('[data-party-group="main"] button[data-formation="horizontal-line"]').click();
       const formationAfter = await readDiagnostics(page);
 
       await page.mouse.move(viewport.width * 0.5, viewport.height * 0.5);
@@ -92,11 +94,22 @@ async function verifyInBrowser() {
       await page.mouse.move(viewport.width * 0.5, viewport.height * 0.3);
       await page.mouse.up();
       await page.waitForTimeout(100);
+      await page.waitForSelector('[data-party-group="group-1"]');
+      const splitPanelCount = await page.locator("[data-party-group]").count();
+      await page.locator('[data-party-group="group-1"] button[data-formation="vertical-line"]').click();
+      const detachedFormationSelected = await page.locator('[data-party-group="group-1"] button[data-formation="vertical-line"]').evaluate((button) => button.classList.contains("is-selected"));
       const beforeCommandWasd = await readDiagnostics(page);
       await page.keyboard.down("w");
       await page.waitForTimeout(120);
       await page.keyboard.up("w");
       const afterCommandWasd = await readDiagnostics(page);
+      const detachedMovementDistance = groundDistance(
+        beforeCommandWasd.party.members.find((member) => member.id === "tank-1")?.position,
+        afterCommandWasd.party.members.find((member) => member.id === "tank-1")?.position,
+      );
+      await page.locator('[data-party-group="group-1"] .party-panel__return').click();
+      await page.waitForTimeout(80);
+      const returnedPanelCount = await page.locator("[data-party-group]").count();
       const maxMemberDeltaDuringCommandWasd = Math.max(
         ...beforeCommandWasd.party.members.map((member) => {
           const afterMember = afterCommandWasd.party.members.find((candidate) => candidate.id === member.id);
@@ -123,8 +136,13 @@ async function verifyInBrowser() {
         hud,
         errors,
         movementDistance,
+        panelClickStartedGesture,
         cameraControlDelta: Math.abs(afterCameraControl.camera.position[2] - before.camera.position[2]),
         formationAfter,
+        splitPanelCount,
+        detachedFormationSelected,
+        returnedPanelCount,
+        detachedMovementDistance,
         intentMenuVisible,
         roleMenuVisible,
         intentLabelsVisible,
@@ -206,13 +224,13 @@ async function collectCanvasMetrics(page) {
 async function collectHudMetrics(page) {
   return page.evaluate(() => {
     const hud = document.querySelector(".party-panel");
-    const actionBar = document.querySelector(".action-bar");
+    const mainPanel = document.querySelector('[data-party-group="main"]');
     const text = document.body.innerText;
     const normalizedText = text.toLowerCase();
     return {
       hasHud: hud instanceof HTMLElement && getComputedStyle(hud).display !== "none",
-      hasActionBar: actionBar instanceof HTMLElement && getComputedStyle(actionBar).display !== "none",
-      formationButtonCount: actionBar?.querySelectorAll("button[data-formation]").length ?? 0,
+      hasMainPanel: mainPanel instanceof HTMLElement && getComputedStyle(mainPanel).display !== "none",
+      formationButtonCount: mainPanel?.querySelectorAll("button[data-formation]").length ?? 0,
       hasParty: normalizedText.includes("party") && normalizedText.includes("tank") && normalizedText.includes("healer"),
       hasPlayerStamina: normalizedText.includes("sta"),
       hasQuest: normalizedText.includes("old gate"),
@@ -223,7 +241,7 @@ async function collectHudMetrics(page) {
 function assertResult(result) {
   const { viewport, metrics, hud, errors, movementDistance } = result;
   const usablePixels = metrics.nonDark > 1400 && metrics.bright > 8 && metrics.colorBuckets > 18;
-  const hudOk = hud.hasHud && hud.hasActionBar && hud.formationButtonCount === 5 && hud.hasParty && !hud.hasPlayerStamina && hud.hasQuest;
+  const hudOk = hud.hasHud && hud.hasMainPanel && hud.formationButtonCount === 5 && hud.hasParty && !hud.hasPlayerStamina && hud.hasQuest;
 
   if (!usablePixels) {
     throw new Error(`${viewport.name} canvas looked blank or too flat: ${JSON.stringify(metrics)}`);
@@ -237,8 +255,17 @@ function assertResult(result) {
   if (result.cameraControlDelta < 5) {
     throw new Error(`${viewport.name} camera vertical-angle control did not move the camera: ${result.cameraControlDelta}`);
   }
+  if (result.panelClickStartedGesture) {
+    throw new Error(`${viewport.name} party-panel click started a gesture`);
+  }
   if (result.formationAfter.party.formation !== "horizontal-line") {
     throw new Error(`${viewport.name} formation button did not select horizontal-line`);
+  }
+  if (result.splitPanelCount !== 2 || !result.detachedFormationSelected || result.returnedPanelCount !== 1) {
+    throw new Error(`${viewport.name} party split/formation/return flow failed`);
+  }
+  if (result.detachedMovementDistance < 0.5) {
+    throw new Error(`${viewport.name} detached party did not receive WASD movement`);
   }
   if (result.formationAfter.party.memberCount !== 10) {
     throw new Error(`${viewport.name} party did not contain ten members: ${result.formationAfter.party.memberCount}`);

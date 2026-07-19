@@ -1,6 +1,6 @@
 export type Vec3Tuple = [number, number, number];
 
-export type PartyRole = "tank" | "melee" | "ranged" | "healer";
+export type PartyRole = string;
 export type PartyCommand = "move";
 export type GestureIntent = PartyCommand | "attention";
 export type FormationType = "triangle" | "tight-circle" | "loose-circle" | "horizontal-line" | "vertical-line";
@@ -22,6 +22,13 @@ export type RpgDiagnostics = {
     formation: FormationType;
     heading: number;
     memberCount: number;
+    groups: Array<{
+      id: string;
+      isMain: boolean;
+      position: Vec3Tuple;
+      formation: FormationType;
+      memberIds: string[];
+    }>;
     members: Array<{
       id: string;
       role: PartyRole;

@@ -1,30 +1,21 @@
 import * as THREE from "three";
-import { PARTY_SPEED, WORLD_BOUNDS } from "../../config";
-import { clamp } from "../../lib/math";
 import type { FormationType, PartyCommand, PartyRole } from "../../types";
 import { AbilitySystem } from "../abilities/AbilitySystem";
 import { abilityDefinitions } from "../abilities/abilityDefinitions";
 import type { AbilityResult, AbilityTarget } from "../abilities/types";
+import { PartyGroup } from "./PartyGroup";
 import { PartyMember } from "./PartyMember";
-import { buildFormationSlots } from "./FormationLayouts";
-
-type RoleOrder = {
-  target: THREE.Vector3;
-};
 
 export class PartyController {
   readonly group = new THREE.Group();
-  readonly position = this.group.position;
-
   private readonly moveInput = new THREE.Vector2();
   private readonly membersInternal: PartyMember[];
   private readonly abilitySystem: AbilitySystem;
-  private readonly roleOrders = new Map<PartyRole, RoleOrder>();
-  private formationSlots = new Map<string, THREE.Vector3>();
-  private currentFormation: FormationType = "triangle";
+  private readonly mainGroup: PartyGroup;
+  private readonly groupsInternal: PartyGroup[];
   private lastFormationMessage = "Triangle formation";
+  private groupSequence = 0;
   private moving = false;
-  private heading = Math.PI / 4;
 
   constructor() {
     this.group.name = "Party";
@@ -40,18 +31,26 @@ export class PartyController {
       this.createMember("healer-1", "Mira", "healer", abilityDefinitions.healerHeal),
       this.createMember("healer-2", "Senn", "healer", abilityDefinitions.healerHeal),
     ];
+    this.mainGroup = new PartyGroup("main", true, this.membersInternal);
+    this.groupsInternal = [this.mainGroup];
+    this.group.add(this.mainGroup.group);
     this.abilitySystem = new AbilitySystem(() => this.membersInternal);
-    this.membersInternal.forEach((member) => this.group.add(member.group));
-    this.formationSlots = buildFormationSlots(this.currentFormation, this.membersInternal);
-    this.applyFormationSlots(0);
+  }
+
+  get position() {
+    return this.mainGroup.position;
   }
 
   get members() {
     return this.membersInternal;
   }
 
+  get groups() {
+    return this.groupsInternal;
+  }
+
   get formation() {
-    return this.currentFormation;
+    return this.mainGroup.formation;
   }
 
   get formationMessage() {
@@ -59,7 +58,7 @@ export class PartyController {
   }
 
   get headingAngle() {
-    return this.heading;
+    return this.mainGroup.headingAngle;
   }
 
   setMoveInput(input: THREE.Vector2) {
@@ -69,35 +68,18 @@ export class PartyController {
     }
   }
 
-  setFormation(formation: FormationType) {
-    if (formation === this.currentFormation) {
+  setFormation(groupId: string, formation: FormationType) {
+    const partyGroup = this.groupsInternal.find((candidate) => candidate.id === groupId);
+    if (!partyGroup?.setFormation(formation)) {
       return;
     }
-    this.currentFormation = formation;
-    this.formationSlots = buildFormationSlots(this.currentFormation, this.membersInternal);
     this.lastFormationMessage = `${this.formatFormationName(formation)} formation`;
   }
 
   update(dt: number) {
-    const direction = new THREE.Vector3(this.moveInput.x, 0, this.moveInput.y);
-    this.moving = direction.lengthSq() > 0;
-    const previousPosition = this.position.clone();
-    if (this.moving) {
-      this.position.addScaledVector(direction, PARTY_SPEED * dt);
-      this.position.x = clamp(this.position.x, -WORLD_BOUNDS, WORLD_BOUNDS);
-      this.position.z = clamp(this.position.z, -WORLD_BOUNDS, WORLD_BOUNDS);
-      this.heading = Math.atan2(-direction.x, -direction.z);
-    }
-
-    const movementDelta = this.position.clone().sub(previousPosition);
-    if (movementDelta.lengthSq() > 0) {
-      this.translateMoveOrders(movementDelta);
-    }
-
-    this.group.updateMatrixWorld(true);
-    this.applyFormationSlots(dt);
-    this.group.updateMatrixWorld(true);
-    this.membersInternal.forEach((member) => member.refreshWorldPosition());
+    this.moving = this.moveInput.lengthSq() > 0;
+    this.mainGroup.update(dt, this.moveInput);
+    this.groupsInternal.filter((partyGroup) => !partyGroup.isMain).forEach((partyGroup) => partyGroup.update(dt, this.moveInput));
     this.abilitySystem.update(dt);
   }
 
@@ -106,7 +88,35 @@ export class PartyController {
   }
 
   issueRoleCommand(role: PartyRole, command: PartyCommand, target: THREE.Vector3) {
-    this.roleOrders.set(role, { target: target.clone() });
+    const partyGroup = this.groupForRole(role);
+    if (!partyGroup) {
+      return;
+    }
+
+    const movingGroup = partyGroup.isMain ? this.detachRole(role) ?? partyGroup : partyGroup;
+    movingGroup.setMoveTarget(target);
+  }
+
+  returnGroup(groupId: string) {
+    const detachedGroup = this.groupsInternal.find((candidate) => candidate.id === groupId && !candidate.isMain);
+    if (!detachedGroup) {
+      return;
+    }
+
+    this.group.updateMatrixWorld(true);
+    const members = [...detachedGroup.members];
+    const worldPositions = new Map<string, THREE.Vector3>();
+    members.forEach((member) => worldPositions.set(member.id, member.worldPosition.clone()));
+    detachedGroup.releaseMembers(members);
+    for (const member of members) {
+      const localPosition = this.mainGroup.group.worldToLocal(worldPositions.get(member.id)?.clone() ?? new THREE.Vector3());
+      this.mainGroup.addMembers([member]);
+      member.position.copy(localPosition);
+    }
+    this.mainGroup.sortMembers((left, right) => this.membersInternal.indexOf(left) - this.membersInternal.indexOf(right));
+    this.group.remove(detachedGroup.group);
+    this.groupsInternal.splice(this.groupsInternal.indexOf(detachedGroup), 1);
+    this.lastFormationMessage = "Party reunited";
   }
 
   useRoleAbility(role: PartyRole, target?: AbilityTarget) {
@@ -115,15 +125,13 @@ export class PartyController {
     if (!member || !ability) {
       return;
     }
-
     const result = this.abilitySystem.use(member, ability, target);
     this.lastFormationMessage = result.message;
     return result;
   }
 
   getAbilityCooldown(member: PartyMember) {
-    const ability = member.abilities[0];
-    return this.abilitySystem.getCooldown(member, ability);
+    return this.abilitySystem.getCooldown(member, member.abilities[0]);
   }
 
   getLowestHealthMember() {
@@ -134,37 +142,22 @@ export class PartyController {
     return result?.message ?? this.lastFormationMessage;
   }
 
-  private applyFormationSlots(dt: number) {
-    for (const member of this.membersInternal) {
-      const roleOrder = this.roleOrders.get(member.role);
-      const desiredWorld = this.desiredWorldPosition(member, roleOrder);
-      const desiredLocal = this.group.worldToLocal(desiredWorld);
-      member.update(dt, desiredLocal);
+  private detachRole(role: PartyRole) {
+    const members = this.mainGroup.members.filter((member) => member.role === role);
+    if (members.length === 0) {
+      return;
     }
+    const detachedGroup = new PartyGroup(`group-${this.groupSequence += 1}`, false, [], this.mainGroup.headingAngle);
+    detachedGroup.position.copy(this.mainGroup.position);
+    this.mainGroup.releaseMembers(members);
+    detachedGroup.addMembers(members);
+    this.groupsInternal.push(detachedGroup);
+    this.group.add(detachedGroup.group);
+    return detachedGroup;
   }
 
-  private desiredWorldPosition(member: PartyMember, roleOrder: RoleOrder | undefined) {
-    if (roleOrder) {
-      const roleMembers = this.membersForRole(member.role);
-      const index = roleMembers.findIndex((candidate) => candidate.id === member.id);
-      const offset = new THREE.Vector3((index - (roleMembers.length - 1) / 2) * 1.05, 0, 0);
-      offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.heading);
-      return roleOrder.target.clone().add(offset);
-    }
-
-    const slot = this.formationSlots.get(member.id) ?? new THREE.Vector3();
-    const rotatedSlot = slot.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), this.heading);
-    return this.group.localToWorld(rotatedSlot);
-  }
-
-  private translateMoveOrders(delta: THREE.Vector3) {
-    for (const order of this.roleOrders.values()) {
-      order.target.add(delta);
-    }
-  }
-
-  private membersForRole(role: PartyRole) {
-    return this.membersInternal.filter((member) => member.role === role);
+  private groupForRole(role: PartyRole) {
+    return this.groupsInternal.find((partyGroup) => partyGroup.containsRole(role));
   }
 
   private createMember(id: string, displayName: string, role: PartyRole, ability: PartyMember["abilities"][number]) {
@@ -172,9 +165,6 @@ export class PartyController {
   }
 
   private formatFormationName(formation: FormationType) {
-    return formation
-      .split("-")
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
+    return formation.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
   }
 }

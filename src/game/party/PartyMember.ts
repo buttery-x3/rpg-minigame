@@ -50,12 +50,12 @@ export class PartyMember {
   }
 
   private buildMesh() {
-    const roleMaterial = {
+    const roleMaterial = ({
       tank: materials.tankBody,
       melee: materials.meleeBody,
       ranged: materials.rangedBody,
       healer: materials.healerBody,
-    }[this.role];
+    } as Record<string, THREE.MeshStandardMaterial>)[this.role] ?? materials.partyBase;
 
     const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.36, 0.7, 5, 10), roleMaterial);
     body.position.y = 0.72;
