@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { WORLD_BOUNDS } from "../../config";
+import { WORLD_HALF_HEIGHT, WORLD_HALF_WIDTH } from "../../config";
 import { clamp } from "../../lib/math";
 import type { GestureIntent, GesturePreview, PartyCommand, PartyRole } from "../../types";
 
@@ -262,8 +262,8 @@ export class GameInput {
     this.pointerNdc.y = -(((this.pointerClient.y - rect.top) / rect.height) * 2 - 1);
     this.raycaster.setFromCamera(this.pointerNdc, this.camera);
     this.raycaster.ray.intersectPlane(this.groundPlane, this.pointerWorld);
-    this.pointerWorld.x = clamp(this.pointerWorld.x, -WORLD_BOUNDS, WORLD_BOUNDS);
+    this.pointerWorld.x = clamp(this.pointerWorld.x, -WORLD_HALF_WIDTH, WORLD_HALF_WIDTH);
     this.pointerWorld.y = 0;
-    this.pointerWorld.z = clamp(this.pointerWorld.z, -WORLD_BOUNDS, WORLD_BOUNDS);
+    this.pointerWorld.z = clamp(this.pointerWorld.z, -WORLD_HALF_HEIGHT, WORLD_HALF_HEIGHT);
   }
 }

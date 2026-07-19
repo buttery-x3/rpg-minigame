@@ -53,18 +53,22 @@ async function verifyInBrowser() {
       await page.waitForSelector("canvas");
       await page.waitForSelector(".ui-layer");
       await page.waitForSelector(".party-panel");
-      await page.waitForSelector(".camera-panel");
+      await page.waitForSelector(".camera-panel", { state: "attached" });
       await page.waitForFunction(() => window.__RPG_GAME__?.getDiagnostics().frameCount > 3);
 
       const before = await readDiagnostics(page);
       await page.locator('[data-party-group="main"] .party-panel__header').click();
       const panelClickStartedGesture = (await readDiagnostics(page)).input.gesture.active;
+      const cameraPanelHiddenOnLoad = await page.locator(".camera-panel").evaluate((panel) => panel.hidden);
+      await page.locator("[data-camera-toggle]").click();
+      const cameraPanelVisibleAfterToggle = await page.locator(".camera-panel:not([hidden])").count();
       await page.locator("[data-camera-angle]").evaluate((input) => {
         input.value = "30";
         input.dispatchEvent(new Event("input", { bubbles: true }));
       });
       await page.waitForTimeout(80);
       const afterCameraControl = await readDiagnostics(page);
+      await page.locator("[data-camera-toggle]").click();
       await page.locator('[data-party-group="main"] button[data-formation="horizontal-line"]').click();
       const formationAfter = await readDiagnostics(page);
 
@@ -137,6 +141,8 @@ async function verifyInBrowser() {
         errors,
         movementDistance,
         panelClickStartedGesture,
+        cameraPanelHiddenOnLoad,
+        cameraPanelVisibleAfterToggle,
         cameraControlDelta: Math.abs(afterCameraControl.camera.position[2] - before.camera.position[2]),
         formationAfter,
         splitPanelCount,
@@ -257,6 +263,9 @@ function assertResult(result) {
   }
   if (result.panelClickStartedGesture) {
     throw new Error(`${viewport.name} party-panel click started a gesture`);
+  }
+  if (!result.cameraPanelHiddenOnLoad || result.cameraPanelVisibleAfterToggle !== 1) {
+    throw new Error(`${viewport.name} camera panel toggle did not work`);
   }
   if (result.formationAfter.party.formation !== "horizontal-line") {
     throw new Error(`${viewport.name} formation button did not select horizontal-line`);

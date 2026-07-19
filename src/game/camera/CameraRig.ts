@@ -3,8 +3,8 @@ import * as THREE from "three";
 export class CameraRig {
   private readonly followFocus = new THREE.Vector3();
   private readonly cameraOffset = new THREE.Vector3();
-  private height = 26;
-  private verticalAngle = Math.atan2(this.height, Math.hypot(22, 22));
+  private height = 40;
+  private verticalAngle = THREE.MathUtils.degToRad(67);
 
   constructor(
     private readonly camera: THREE.PerspectiveCamera,

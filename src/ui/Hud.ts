@@ -72,12 +72,13 @@ export class Hud {
         <span data-hud-state></span>
         <small data-formation-message></small>
       </section>
-      <section class="camera-panel" aria-label="Camera controls">
+      <section class="camera-panel" aria-label="Camera controls" hidden>
         <strong>Camera</strong>
-        <label>Vertical angle <output data-camera-angle-value>40°</output><input data-camera-angle type="range" min="15" max="75" value="40" step="1" /></label>
-        <label>Height <output data-camera-height-value>26</output><input data-camera-height type="range" min="10" max="50" value="26" step="1" /></label>
-        <label>FOV <output data-camera-fov-value>57°</output><input data-camera-fov type="range" min="30" max="90" value="57" step="1" /></label>
+        <label>Vertical angle <output data-camera-angle-value>67°</output><input data-camera-angle type="range" min="15" max="75" value="67" step="1" /></label>
+        <label>Height <output data-camera-height-value>40</output><input data-camera-height type="range" min="10" max="50" value="40" step="1" /></label>
+        <label>FOV <output data-camera-fov-value>50°</output><input data-camera-fov type="range" min="30" max="90" value="50" step="1" /></label>
       </section>
+      <button class="camera-toggle" type="button" aria-label="Show camera controls" aria-expanded="false" data-camera-toggle>⚙</button>
       <div class="gesture-menu" data-gesture-menu hidden>
         <div class="gesture-menu__title" data-gesture-title>Choose an order</div>
         <div class="gesture-menu__roles">
@@ -100,6 +101,14 @@ export class Hud {
     this.gestureMenu = this.require<HTMLElement>("[data-gesture-menu]");
     this.gestureTitle = this.require<HTMLElement>("[data-gesture-title]");
     this.syncGroupPanels();
+
+    const cameraPanel = this.require<HTMLElement>(".camera-panel");
+    const cameraToggle = this.require<HTMLButtonElement>("[data-camera-toggle]");
+    cameraToggle.addEventListener("click", () => {
+      cameraPanel.hidden = !cameraPanel.hidden;
+      cameraToggle.setAttribute("aria-expanded", `${!cameraPanel.hidden}`);
+      cameraToggle.setAttribute("aria-label", cameraPanel.hidden ? "Show camera controls" : "Hide camera controls");
+    });
 
     this.bindCameraControl("[data-camera-angle]", "[data-camera-angle-value]", (value) => `${value}°`, callbacks.setCameraAngle);
     this.bindCameraControl("[data-camera-height]", "[data-camera-height-value]", (value) => `${value}`, callbacks.setCameraHeight);

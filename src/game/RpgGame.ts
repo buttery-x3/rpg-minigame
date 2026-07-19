@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { CAMERA_FOV, WORLD_BOUNDS } from "../config";
+import { CAMERA_FOV, WORLD_HEIGHT, WORLD_WIDTH } from "../config";
 import { vecToTuple } from "../lib/math";
 import { materials } from "../render/materials";
 import type { RpgDiagnostics } from "../types";
@@ -97,7 +97,8 @@ export class RpgGame {
         gesture: this.input.gesture,
       },
       world: {
-        bounds: WORLD_BOUNDS,
+        width: WORLD_WIDTH,
+        height: WORLD_HEIGHT,
       },
     };
   }

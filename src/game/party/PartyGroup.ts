@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { PARTY_SPEED, WORLD_BOUNDS } from "../../config";
+import { PARTY_SPEED, WORLD_HALF_HEIGHT, WORLD_HALF_WIDTH } from "../../config";
 import { clamp } from "../../lib/math";
 import type { FormationType, PartyRole } from "../../types";
 import { buildFormationSlots } from "./FormationLayouts";
@@ -116,8 +116,8 @@ export class PartyGroup {
 
   private moveBy(direction: THREE.Vector3, amount: number) {
     this.position.addScaledVector(direction, amount);
-    this.position.x = clamp(this.position.x, -WORLD_BOUNDS, WORLD_BOUNDS);
-    this.position.z = clamp(this.position.z, -WORLD_BOUNDS, WORLD_BOUNDS);
+    this.position.x = clamp(this.position.x, -WORLD_HALF_WIDTH, WORLD_HALF_WIDTH);
+    this.position.z = clamp(this.position.z, -WORLD_HALF_HEIGHT, WORLD_HALF_HEIGHT);
   }
 
   private rebuildFormation() {

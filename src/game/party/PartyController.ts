@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { WORLD_HALF_WIDTH } from "../../config";
 import type { FormationType, PartyCommand, PartyRole } from "../../types";
 import { AbilitySystem } from "../abilities/AbilitySystem";
 import { abilityDefinitions } from "../abilities/abilityDefinitions";
@@ -32,6 +33,7 @@ export class PartyController {
       this.createMember("healer-2", "Senn", "healer", abilityDefinitions.healerHeal),
     ];
     this.mainGroup = new PartyGroup("main", true, this.membersInternal);
+    this.mainGroup.position.x = -WORLD_HALF_WIDTH + 12;
     this.groupsInternal = [this.mainGroup];
     this.group.add(this.mainGroup.group);
     this.abilitySystem = new AbilitySystem(() => this.membersInternal);

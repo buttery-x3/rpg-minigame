@@ -320,7 +320,7 @@ canvas {
 .camera-panel {
   position: fixed;
   right: 16px;
-  bottom: 16px;
+  bottom: 52px;
   display: grid;
   width: 190px;
   gap: 8px;
@@ -331,6 +331,35 @@ canvas {
   box-shadow: 0 12px 30px rgb(0 0 0 / 24%);
   color: rgb(245 242 233 / 78%);
   pointer-events: auto;
+}
+
+.camera-panel[hidden] {
+  display: none;
+}
+
+.camera-toggle {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgb(245 242 233 / 24%);
+  border-radius: 6px;
+  background: rgb(20 27 35 / 88%);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 24%);
+  color: #e6c06a;
+  cursor: pointer;
+  font-size: 15px;
+  pointer-events: auto;
+}
+
+.camera-toggle:hover,
+.camera-toggle:focus-visible {
+  border-color: #e6c06a;
+  outline: none;
 }
 
 .camera-panel > strong {

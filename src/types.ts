@@ -50,6 +50,7 @@ export type RpgDiagnostics = {
     gesture: GesturePreview;
   };
   world: {
-    bounds: number;
+    width: number;
+    height: number;
   };
 };
