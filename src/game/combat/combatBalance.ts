@@ -3,6 +3,12 @@ import type { CombatRole, UnitStats } from "./types";
 export const THREAT_MAX = 100;
 export const THREAT_DECAY_PER_SECOND = 5;
 export const ENERGY_MAX = 100;
+export const TAUNT_DURATION_SECONDS = 5;
+export const MELEE_AUTO_ATTACK_RANGE = 1.8;
+export const RANGED_AUTO_ATTACK_RANGE = 9;
+export const MOVEMENT_SPEED = 7.4;
+export const DAMAGE_THREAT_MULTIPLIER = 0.45;
+export const HEALING_THREAT_MULTIPLIER = 0.35;
 
 export const roleStats: Record<CombatRole, UnitStats> = {
   tank: { stamina: 12, strength: 8, agility: 4, intelligence: 2, wisdom: 4, awareness: 8 },
@@ -12,17 +18,21 @@ export const roleStats: Record<CombatRole, UnitStats> = {
 };
 
 export function maxHealth(stats: UnitStats) {
-  return 100 + stats.stamina * 10;
+  return 220 + stats.stamina * 16;
 }
 
 export function energyRegen(stats: UnitStats) {
-  return 8 + stats.wisdom * 0.2;
+  return 3.5 + stats.wisdom * 0.12;
 }
 
 export function awarenessRange(stats: UnitStats) {
-  return 6 + stats.awareness * 0.75;
+  return 5 + stats.awareness * 0.6;
 }
 
 export function attackInterval(stats: UnitStats, base: number) {
-  return Math.max(0.55, base / (1 + stats.agility * 0.03));
+  return Math.max(1.05, base / (1 + stats.agility * 0.022));
+}
+
+export function sanitizeStats(stats: UnitStats): UnitStats {
+  return Object.fromEntries(Object.entries(stats).map(([key, value]) => [key, Math.min(30, Math.max(0, Number.isFinite(value) ? value : 0))])) as UnitStats;
 }

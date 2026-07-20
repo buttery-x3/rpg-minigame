@@ -3,8 +3,8 @@ import * as THREE from "three";
 export class CameraRig {
   private readonly followFocus = new THREE.Vector3();
   private readonly cameraOffset = new THREE.Vector3();
-  private height = 40;
-  private verticalAngle = THREE.MathUtils.degToRad(67);
+  private height = 23;
+  private verticalAngle = THREE.MathUtils.degToRad(62);
 
   constructor(
     private readonly camera: THREE.PerspectiveCamera,
@@ -13,7 +13,9 @@ export class CameraRig {
 
   update(dt: number, target: THREE.Vector3) {
     const followAmount = 1 - Math.pow(0.001, dt);
-    this.followFocus.lerp(target, followAmount);
+    const framedTarget = this.cameraOffset.copy(target);
+    framedTarget.x -= 3.5;
+    this.followFocus.lerp(framedTarget, followAmount);
     this.cameraOffset.set(
       0,
       this.height,

@@ -16,6 +16,13 @@ export type GesturePreview = {
 export type RpgDiagnostics = {
   frameCount: number;
   paused: boolean;
+  combat: {
+    activeEffects: number;
+    effectsCreated: number;
+    loadedModels: number;
+    totalModels: number;
+    aliveEnemies: number;
+  };
   party: {
     position: Vec3Tuple;
     moving: boolean;

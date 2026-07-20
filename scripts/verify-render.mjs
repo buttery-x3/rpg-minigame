@@ -55,6 +55,10 @@ async function verifyInBrowser() {
       await page.waitForSelector(".party-panel");
       await page.waitForSelector(".camera-panel", { state: "attached" });
       await page.waitForFunction(() => window.__RPG_GAME__?.getDiagnostics().frameCount > 3);
+      await page.waitForFunction(() => {
+        const combat = window.__RPG_GAME__?.getDiagnostics().combat;
+        return combat && combat.loadedModels === combat.totalModels;
+      });
 
       const before = await readDiagnostics(page);
       await page.locator('[data-party-group="main"] .party-panel__header').click();
@@ -132,8 +136,18 @@ async function verifyInBrowser() {
       await page.waitForTimeout(700);
       await page.keyboard.up("w");
       await page.waitForTimeout(250);
+      await page.waitForFunction(() => window.__RPG_GAME__?.getDiagnostics().combat.effectsCreated > 0);
       const after = await readDiagnostics(page);
       const movementDistance = groundDistance(before.party.position, after.party.position);
+
+      await page.locator("[data-party-manage]").click();
+      const managementVisible = await page.locator("[data-party-management]:not([hidden])").count();
+      const managementStats = await page.locator(".party-management__stats > div").count();
+      const managementPortraits = await page.locator(".party-management__portrait").evaluateAll((portraits) =>
+        portraits.filter((portrait) => getComputedStyle(portrait).backgroundImage.includes("data:image/png")).length,
+      );
+      await page.locator('[data-management-member-id="tank-2"]').click();
+      const selectedManagementMember = await page.locator(".party-management__hero h2").textContent();
 
       const screenshotPath = path.join(outputDir, `${viewport.name}.png`);
       await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -166,6 +180,13 @@ async function verifyInBrowser() {
         nestedMenuPosition,
         diagonalGesture,
         maxMemberDeltaDuringCommandWasd,
+        loadedModels: after.combat.loadedModels,
+        totalModels: after.combat.totalModels,
+        effectsCreated: after.combat.effectsCreated,
+        managementVisible,
+        managementStats,
+        managementPortraits,
+        selectedManagementMember,
       };
       assertResult(result);
       results.push(result);
@@ -285,7 +306,7 @@ function assertResult(result) {
     throw new Error(`${viewport.name} formation button did not select horizontal-line`);
   }
   if (result.splitPanelCount !== 2 || !result.detachedFormationSelected || result.returnedPanelCount !== 1) {
-    throw new Error(`${viewport.name} party split/formation/return flow failed`);
+    throw new Error(`${viewport.name} party split/formation/return flow failed: split=${result.splitPanelCount}, selected=${result.detachedFormationSelected}, returned=${result.returnedPanelCount}`);
   }
   if (result.detachedMovementDistance < 0.5) {
     throw new Error(`${viewport.name} detached party did not receive WASD movement`);
@@ -317,6 +338,12 @@ function assertResult(result) {
   }
   if (result.maxMemberDeltaDuringCommandWasd > 6) {
     throw new Error(`${viewport.name} a member warped during WASD movement: ${result.maxMemberDeltaDuringCommandWasd}`);
+  }
+  if (result.loadedModels !== result.totalModels || result.effectsCreated < 1) {
+    throw new Error(`${viewport.name} combat presentation did not load: models=${result.loadedModels}/${result.totalModels}, effects=${result.effectsCreated}`);
+  }
+  if (result.managementVisible !== 1 || result.managementStats !== 6 || result.managementPortraits < 2 || result.selectedManagementMember !== "Orrin") {
+    throw new Error(`${viewport.name} party management failed: visible=${result.managementVisible}, stats=${result.managementStats}, portraits=${result.managementPortraits}, selected=${result.selectedManagementMember}`);
   }
   if (errors.length > 0) {
     throw new Error(`${viewport.name} browser errors: ${errors.join(" | ")}`);

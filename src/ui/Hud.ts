@@ -3,6 +3,7 @@ import type { PartyController } from "../game/party/PartyController";
 import type { PartyGroup } from "../game/party/PartyGroup";
 import type { CombatStance } from "../game/combat/types";
 import { abilityCatalog } from "../game/combat/abilityCatalog";
+import type { OwnedUnitView } from "../game/combat/buildPlayerView";
 
 const roleLabels: Partial<Record<PartyRole, string>> = {
   tank: "Tank",
@@ -53,8 +54,13 @@ export class Hud {
   private readonly pauseShade = document.createElement("div");
   private readonly gestureMenu: HTMLElement;
   private readonly gestureTitle: HTMLElement;
-  private readonly memberCards = new Map<string, { card: HTMLElement; health: HTMLElement; bar: HTMLElement; energy: HTMLElement; energyBar: HTMLElement; threat: HTMLElement; action: HTMLElement; abilities: HTMLElement }>();
+  private readonly memberCards = new Map<string, { card: HTMLElement; portrait: HTMLElement; health: HTMLElement; bar: HTMLElement; energy: HTMLElement; energyBar: HTMLElement; threat: HTMLElement; action: HTMLElement; abilities: HTMLElement }>();
   private readonly groupPanels = new Map<string, GroupPanel>();
+  private readonly managementPanel: HTMLElement;
+  private readonly managementList: HTMLElement;
+  private readonly managementDetails: HTMLElement;
+  private selectedMemberId: string;
+  private managementListBuilt = false;
 
   constructor(
     private readonly party: PartyController,
@@ -76,12 +82,20 @@ export class Hud {
         <strong data-hud-location></strong>
         <span data-hud-state></span>
         <small data-formation-message></small>
+        <button class="party-manage-toggle" type="button" data-party-manage>Manage party</button>
+      </section>
+      <section class="party-management" aria-label="Party management" data-party-management hidden>
+        <header><div><small>Party planner</small><strong>Party Management</strong></div><button type="button" aria-label="Close party management" data-party-management-close>×</button></header>
+        <div class="party-management__body">
+          <nav class="party-management__list" aria-label="Party members" data-party-management-list></nav>
+          <article class="party-management__details" data-party-management-details></article>
+        </div>
       </section>
       <section class="camera-panel" aria-label="Camera controls" hidden>
         <strong>Camera</strong>
-        <label>Vertical angle <output data-camera-angle-value>67°</output><input data-camera-angle type="range" min="15" max="75" value="67" step="1" /></label>
-        <label>Height <output data-camera-height-value>40</output><input data-camera-height type="range" min="10" max="50" value="40" step="1" /></label>
-        <label>FOV <output data-camera-fov-value>50°</output><input data-camera-fov type="range" min="30" max="90" value="50" step="1" /></label>
+        <label>Vertical angle <output data-camera-angle-value>62°</output><input data-camera-angle type="range" min="15" max="75" value="62" step="1" /></label>
+        <label>Height <output data-camera-height-value>23</output><input data-camera-height type="range" min="10" max="50" value="23" step="1" /></label>
+        <label>FOV <output data-camera-fov-value>45°</output><input data-camera-fov type="range" min="30" max="90" value="45" step="1" /></label>
       </section>
       <button class="camera-toggle" type="button" aria-label="Show camera controls" aria-expanded="false" data-camera-toggle>⚙</button>
       <div class="gesture-menu" data-gesture-menu hidden>
@@ -89,8 +103,8 @@ export class Hud {
         <div class="gesture-menu__roles">
           <span data-gesture-role="tank" aria-label="Tank">🛡️</span>
           <span data-gesture-role="melee" aria-label="Melee">⚔️</span>
-          <span data-gesture-role="ranged" aria-label="Ranged">🧙</span>
-          <span data-gesture-role="healer" aria-label="Healer">➕</span>
+          <span data-gesture-role="ranged" aria-label="Ranged">🪄</span>
+          <span data-gesture-role="healer" aria-label="Healer">✚</span>
         </div>
         <div class="gesture-menu__intents" data-gesture-intents>
           <span data-gesture-intent="move">Move here</span>
@@ -105,7 +119,20 @@ export class Hud {
     this.formationMessage = this.require<HTMLElement>("[data-formation-message]");
     this.gestureMenu = this.require<HTMLElement>("[data-gesture-menu]");
     this.gestureTitle = this.require<HTMLElement>("[data-gesture-title]");
+    this.managementPanel = this.require<HTMLElement>("[data-party-management]");
+    this.managementList = this.require<HTMLElement>("[data-party-management-list]");
+    this.managementDetails = this.require<HTMLElement>("[data-party-management-details]");
+    this.selectedMemberId = this.party.members[0]?.id ?? "";
     this.syncGroupPanels();
+
+    this.require<HTMLButtonElement>("[data-party-manage]").addEventListener("click", () => this.setManagementOpen(true));
+    this.require<HTMLButtonElement>("[data-party-management-close]").addEventListener("click", () => this.setManagementOpen(false));
+    this.managementList.addEventListener("click", (event) => {
+      const button = (event.target as Element).closest<HTMLButtonElement>("[data-management-member-id]");
+      if (!button?.dataset.managementMemberId) return;
+      this.selectedMemberId = button.dataset.managementMemberId;
+      this.renderManagement(new Map(this.party.playerView.ownedUnits.map((unit) => [unit.id, unit])));
+    });
 
     const cameraPanel = this.require<HTMLElement>(".camera-panel");
     const cameraToggle = this.require<HTMLButtonElement>("[data-camera-toggle]");
@@ -141,8 +168,13 @@ export class Hud {
       elements.energy.textContent = `${Math.round(state.energy)}`;
       elements.energyBar.style.width = `${(state.energy / state.maxEnergy) * 100}%`;
       elements.threat.textContent = `${Math.round(state.threat)}`;
+      this.applyPortrait(elements.portrait, member.role);
       elements.action.textContent = state.action === "idle" ? this.roleLabel(member.role) : `${this.roleLabel(member.role)} · ${state.action}`;
-      elements.abilities.textContent = state.abilities.map((ability) => ability.cooldownRemaining > 0 ? `${abilityCatalog[ability.id as keyof typeof abilityCatalog].label} ${ability.cooldownRemaining.toFixed(1)}s` : `${abilityCatalog[ability.id as keyof typeof abilityCatalog].label} ready`).join(" · ");
+      elements.abilities.textContent = state.abilities.map((ability) => {
+        const definition = abilityCatalog[ability.id as keyof typeof abilityCatalog];
+        const tier = definition.costTier === "high" ? "◆" : "◇";
+        return ability.cooldownRemaining > 0 ? `${tier} ${definition.label} ${ability.cooldownRemaining.toFixed(1)}s` : `${tier} ${definition.label} ready`;
+      }).join(" · ");
     });
 
     this.party.groups.forEach((group) => {
@@ -158,10 +190,11 @@ export class Hud {
       panel.stanceButtons.forEach((button, candidate) => button.classList.toggle("is-selected", stance === candidate));
     });
 
-    this.locationValue.textContent = this.party.position.z > 6 ? "Gateward Road" : "Mosswake Field";
+    this.locationValue.textContent = this.party.position.z > 45 ? "South Muster" : this.party.position.z > 10 ? "Mosswake Field" : this.party.position.z > -24 ? "North Road" : "Old Gate Approach";
     this.stateValue.textContent = this.party.isMoving() ? "Moving with WASD" : "Ready for orders";
     this.formationMessage.textContent = this.party.formationMessage;
     this.pauseShade.hidden = !paused;
+    if (!this.managementPanel.hidden) this.renderManagement(ownedUnits);
   }
 
   setGesturePreview(preview: GesturePreview) {
@@ -190,6 +223,7 @@ export class Hud {
         this.groupPanels.delete(groupId);
       }
     });
+    if (liveGroupIds.size === 1) this.partyGroups.scrollTop = 0;
     this.party.groups.forEach((group) => this.ensureGroupPanel(group));
   }
 
@@ -227,7 +261,7 @@ export class Hud {
       button.dataset.stance = stance;
       button.title = `${stance.charAt(0).toUpperCase()}${stance.slice(1)} stance`;
       button.setAttribute("aria-label", button.title);
-      button.textContent = ({ aggressive: "A", balanced: "B", defensive: "D" } as Record<CombatStance, string>)[stance];
+      button.textContent = ({ aggressive: "⚔", balanced: "◆", defensive: "🛡" } as Record<CombatStance, string>)[stance];
       button.addEventListener("click", () => this.callbacks.setStance(group.id, stance));
       formations.append(button);
       stanceButtons.set(stance, button);
@@ -274,11 +308,65 @@ export class Hud {
     card.className = "member-card";
     card.dataset.memberId = member.id;
     card.innerHTML = `
-      <span class="member-card__portrait" style="--role-color: ${this.roleColor(member.role)}">${member.displayName.slice(0, 1)}</span>
+      <span class="member-card__portrait" data-member-portrait style="--role-color: ${this.roleColor(member.role)}">${member.displayName.slice(0, 1)}</span>
       <span class="member-card__details"><strong>${member.displayName}</strong><small data-member-action>${this.roleLabel(member.role)}</small><span class="member-card__meter"><span data-member-health-bar></span></span><span class="member-card__meter member-card__meter--energy"><span data-member-energy-bar></span></span><small data-member-abilities></small></span>
       <b>H<span data-member-health></span><br>E<span data-member-energy></span><br>T<span data-member-threat></span></b>
     `;
-    this.memberCards.set(member.id, { card, health: this.requireFrom(card, "[data-member-health]"), bar: this.requireFrom(card, "[data-member-health-bar]"), energy: this.requireFrom(card, "[data-member-energy]"), energyBar: this.requireFrom(card, "[data-member-energy-bar]"), threat: this.requireFrom(card, "[data-member-threat]"), action: this.requireFrom(card, "[data-member-action]"), abilities: this.requireFrom(card, "[data-member-abilities]") });
+    const portrait = this.requireFrom<HTMLElement>(card, "[data-member-portrait]");
+    card.addEventListener("click", () => {
+      this.selectedMemberId = member.id;
+      this.setManagementOpen(true);
+    });
+    this.memberCards.set(member.id, { card, portrait, health: this.requireFrom(card, "[data-member-health]"), bar: this.requireFrom(card, "[data-member-health-bar]"), energy: this.requireFrom(card, "[data-member-energy]"), energyBar: this.requireFrom(card, "[data-member-energy-bar]"), threat: this.requireFrom(card, "[data-member-threat]"), action: this.requireFrom(card, "[data-member-action]"), abilities: this.requireFrom(card, "[data-member-abilities]") });
+  }
+
+  private setManagementOpen(open: boolean) {
+    this.managementPanel.hidden = !open;
+    if (open) this.renderManagement(new Map(this.party.playerView.ownedUnits.map((unit) => [unit.id, unit])));
+  }
+
+  private renderManagement(ownedUnits: Map<string, OwnedUnitView>) {
+    const units = this.party.playerView.ownedUnits;
+    const stateById = ownedUnits.size ? ownedUnits : new Map(units.map((unit) => [unit.id, unit]));
+    if (!this.managementListBuilt) {
+      this.party.members.forEach((member) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "party-management__member";
+        button.dataset.managementMemberId = member.id;
+        button.innerHTML = `<span class="party-management__portrait" style="--role-color: ${this.roleColor(member.role)}">${member.displayName.slice(0, 1)}</span><span><strong>${member.displayName}</strong><small>${this.roleLabel(member.role)}</small></span>`;
+        this.applyPortrait(this.requireFrom(button, ".party-management__portrait"), member.role);
+        this.managementList.append(button);
+      });
+      this.managementListBuilt = true;
+    }
+    this.managementList.querySelectorAll<HTMLButtonElement>("[data-management-member-id]").forEach((button) => {
+      button.classList.toggle("is-selected", button.dataset.managementMemberId === this.selectedMemberId);
+      const member = this.party.members.find((candidate) => candidate.id === button.dataset.managementMemberId);
+      const portrait = button.querySelector<HTMLElement>(".party-management__portrait");
+      if (member && portrait) this.applyPortrait(portrait, member.role);
+    });
+    const member = this.party.members.find((candidate) => candidate.id === this.selectedMemberId) ?? this.party.members[0];
+    const state = member ? stateById.get(member.id) : undefined;
+    if (!member || !state) return;
+    const abilityRows = state.abilities.map((ability) => {
+      const definition = abilityCatalog[ability.id as keyof typeof abilityCatalog];
+      return `<li><span>${definition.label}</span><small>${definition.costTier} · ${definition.energyCost} energy</small></li>`;
+    }).join("");
+    const stats = Object.entries(state.stats).map(([label, value]) => `<div><small>${label}</small><strong>${value}</strong></div>`).join("");
+    this.managementDetails.innerHTML = `
+      <div class="party-management__hero"><span class="party-management__portrait party-management__portrait--large" style="--role-color: ${this.roleColor(member.role)}">${member.displayName.slice(0, 1)}</span><div><small>${this.roleLabel(member.role)}</small><h2>${member.displayName}</h2><p>${Math.round(state.health)} / ${state.maxHealth} health · ${Math.round(state.energy)} / ${state.maxEnergy} energy · ${Math.round(state.threat)} threat</p></div></div>
+      <h3>Attributes</h3><div class="party-management__stats">${stats}</div>
+      <h3>Equipped abilities</h3><ul class="party-management__abilities">${abilityRows}</ul>
+      <p class="party-management__note">Ability assignment will plug into the future party planner.</p>`;
+    this.applyPortrait(this.requireFrom(this.managementDetails, ".party-management__portrait--large"), member.role);
+  }
+
+  private applyPortrait(element: HTMLElement, role: PartyRole) {
+    const portrait = this.party.portraits[role];
+    if (!portrait) return;
+    element.style.backgroundImage = `linear-gradient(145deg, color-mix(in srgb, var(--role-color), transparent 62%), rgb(18 25 33 / 80%)), url(${portrait})`;
+    element.textContent = "";
   }
 
   private groupLabel(group: PartyGroup) {

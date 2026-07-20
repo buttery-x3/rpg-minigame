@@ -18,7 +18,7 @@ export class RpgGame {
   private readonly clock = new THREE.Clock();
   private readonly world = new WorldScene();
   private readonly party = new PartyController();
-  private readonly combatEffects = new CombatEffectsRenderer(this.party.combat);
+  private readonly combatEffects = new CombatEffectsRenderer();
   private readonly cameraRig: CameraRig;
   private readonly input: GameInput;
   private readonly hud: Hud;
@@ -67,6 +67,13 @@ export class RpgGame {
     return {
       frameCount: this.frameCount,
       paused: this.paused,
+      combat: {
+        activeEffects: this.combatEffects.activeCount,
+        effectsCreated: this.combatEffects.totalCreated,
+        loadedModels: this.party.loadedModelCount,
+        totalModels: this.party.members.length + this.party.enemies.length,
+        aliveEnemies: this.party.enemies.filter((member) => member.alive).length,
+      },
       party: {
         position: vecToTuple(this.party.position),
         moving: this.party.isMoving(),
@@ -124,6 +131,9 @@ export class RpgGame {
 
   private configureRenderer() {
     this.renderer.setClearColor(0x182028);
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.08;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   }
@@ -132,10 +142,10 @@ export class RpgGame {
     this.scene.background = new THREE.Color(0x182028);
     this.scene.fog = new THREE.Fog(0x182028, 46, 94);
 
-    const hemisphere = new THREE.HemisphereLight(0xe8f0da, 0x253144, 2.3);
+    const hemisphere = new THREE.HemisphereLight(0xe8f0da, 0x253144, 1.65);
     this.scene.add(hemisphere);
 
-    const sun = new THREE.DirectionalLight(0xffe8b8, 3.2);
+    const sun = new THREE.DirectionalLight(0xffe8b8, 2.6);
     sun.position.set(-18, 34, 18);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -159,7 +169,7 @@ export class RpgGame {
       this.combatEffects.update(dt);
     }
 
-    this.cameraRig.update(dt, this.party.position);
+    this.cameraRig.update(dt, this.party.cameraFocus);
     this.hud.update(this.paused);
     this.renderer.render(this.scene, this.camera);
     this.frameCount += 1;

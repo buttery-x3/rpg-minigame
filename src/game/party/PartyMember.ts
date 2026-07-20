@@ -1,14 +1,12 @@
 import * as THREE from "three";
 import { PARTY_MEMBER_SPEED } from "../../config";
 import type { PartyRole } from "../../types";
-import type { AbilityDefinition } from "../abilities/types";
 import { materials } from "../../render/materials";
 
 type PartyMemberConfig = {
   id: string;
   displayName: string;
   role: PartyRole;
-  ability: AbilityDefinition;
   faction?: "party" | "enemy";
 };
 
@@ -17,19 +15,23 @@ export class PartyMember {
   readonly position = this.group.position;
   readonly worldPosition = new THREE.Vector3();
   maxHealth = 100;
-  readonly abilities: readonly AbilityDefinition[];
   health = 100;
   energy = 100;
   maxEnergy = 100;
   threat = 0;
   action = "idle";
+  alive = true;
+  hasModel = false;
   inCombat = false;
   private readonly visualRoot = new THREE.Group();
   private readonly fallbackRoot = new THREE.Group();
+  private readonly statusRoot = new THREE.Group();
+  private unitRing!: THREE.Mesh;
+  private healthFill?: THREE.Mesh;
+  private energyFill?: THREE.Mesh;
 
   constructor(private readonly config: PartyMemberConfig) {
     this.group.name = config.id;
-    this.abilities = [config.ability];
     this.buildMesh();
   }
 
@@ -59,14 +61,22 @@ export class PartyMember {
     this.group.getWorldPosition(this.worldPosition);
   }
 
-  syncCombat(state: { health: number; maxHealth: number; energy: number; maxEnergy: number; threat: number; action: string; inCombat: boolean }) {
+  syncCombat(state: { health: number; maxHealth: number; energy: number; maxEnergy: number; threat: number; action: string; alive: boolean; facing: { x: number; z: number }; inCombat: boolean }) {
     this.health = state.health;
     this.maxHealth = state.maxHealth;
     this.energy = state.energy;
     this.maxEnergy = state.maxEnergy;
     this.threat = state.threat;
     this.action = state.action;
+    this.alive = state.alive;
     this.inCombat = state.inCombat;
+    this.unitRing.visible = state.alive;
+    this.statusRoot.visible = state.alive && this.faction === "party";
+    this.setBar(this.healthFill, state.maxHealth === 0 ? 0 : state.health / state.maxHealth, 0.58);
+    this.setBar(this.energyFill, state.maxEnergy === 0 ? 0 : state.energy / state.maxEnergy, 0.58);
+    this.visualRoot.rotation.y = Math.atan2(state.facing.x, state.facing.z);
+    this.visualRoot.rotation.z = state.alive ? 0 : Math.PI / 2;
+    this.visualRoot.position.y = state.alive ? 0 : 0.18;
   }
 
   applyModel(template: THREE.Object3D) {
@@ -87,6 +97,7 @@ export class PartyMember {
       this.visualRoot.add(overlay);
     }
     this.fallbackRoot.visible = false;
+    this.hasModel = true;
   }
 
   private buildMesh() {
@@ -107,11 +118,32 @@ export class PartyMember {
     roleMarker.castShadow = true;
     this.fallbackRoot.add(roleMarker);
 
-    const base = new THREE.Mesh(new THREE.RingGeometry(0.86, 1.02, 28), this.faction === "enemy" ? materials.enemyUnitRing : materials.friendlyUnitRing);
-    base.rotation.x = -Math.PI / 2;
-    base.position.y = 0.05;
-    this.group.add(base);
-    this.group.add(this.visualRoot, this.fallbackRoot);
+    this.unitRing = new THREE.Mesh(new THREE.RingGeometry(0.86, 1.02, 28), this.faction === "enemy" ? materials.enemyUnitRing : materials.friendlyUnitRing);
+    this.unitRing.rotation.x = -Math.PI / 2;
+    this.unitRing.position.y = 0.05;
+    this.group.add(this.unitRing);
+    if (this.faction === "party") this.buildStatusBars();
+    this.group.add(this.visualRoot, this.fallbackRoot, this.statusRoot);
+  }
+
+  private buildStatusBars() {
+    const backGeometry = new THREE.PlaneGeometry(1.28, 0.28);
+    const back = new THREE.Mesh(backGeometry, materials.statusBack);
+    const fillGeometry = new THREE.PlaneGeometry(1.16, 0.075);
+    this.healthFill = new THREE.Mesh(fillGeometry, materials.statusHealth);
+    this.energyFill = new THREE.Mesh(fillGeometry, materials.statusEnergy);
+    back.position.z = -0.015;
+    this.healthFill.position.set(0, 0.055, 0);
+    this.energyFill.position.set(0, -0.055, 0);
+    this.statusRoot.position.set(0, 2.55, 0);
+    this.statusRoot.add(back, this.healthFill, this.energyFill);
+  }
+
+  private setBar(bar: THREE.Mesh | undefined, fraction: number, halfWidth: number) {
+    if (!bar) return;
+    const value = Math.min(1, Math.max(0, fraction));
+    bar.scale.x = Math.max(0.001, value);
+    bar.position.x = -(1 - value) * halfWidth;
   }
 
   private normalizeModel(model: THREE.Object3D) {
@@ -140,18 +172,10 @@ export class PartyMember {
       opaque.opacity = 1;
       opaque.depthWrite = true;
       if (opaque instanceof THREE.MeshStandardMaterial) {
-        const tint = ({
-          tank: materials.tankBody.color,
-          melee: materials.meleeBody.color,
-          ranged: materials.rangedBody.color,
-          healer: materials.healerBody.color,
-        } as Record<string, THREE.Color>)[this.role];
-        if (tint) {
-          opaque.color.lerp(tint, 0.32);
-          opaque.emissive.copy(tint).multiplyScalar(0.13);
-          opaque.emissiveIntensity = 1;
-          opaque.roughness = Math.max(opaque.roughness, 0.68);
-        }
+        opaque.metalness = 0;
+        opaque.roughness = 1;
+        opaque.emissive.set(0x000000);
+        opaque.emissiveIntensity = 0;
       }
       return opaque;
     };

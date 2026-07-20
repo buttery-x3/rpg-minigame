@@ -1,6 +1,8 @@
-export type CombatFaction = "party" | "enemy";
+export type CombatFaction = string;
 export type CombatStance = "aggressive" | "balanced" | "defensive";
 export type CombatRole = "tank" | "melee" | "ranged" | "healer";
+export type CombatController = "human" | "computer";
+export type AutoAttackKind = "sword" | "wand";
 export type Vec2 = { x: number; z: number };
 
 export type UnitStats = {
@@ -33,6 +35,7 @@ export type CombatUnit = {
   groupId: string;
   position: Vec2;
   home: Vec2;
+  facing: Vec2;
   stats: UnitStats;
   health: number;
   maxHealth: number;
@@ -45,19 +48,20 @@ export type CombatUnit = {
   forcedTargetRemaining: number;
   action: UnitAction;
   attackRemaining: number;
-  cooldowns: Record<AbilityId, number>;
+  cooldowns: Partial<Record<AbilityId, number>>;
   abilities: AbilityId[];
   cast: { abilityId: AbilityId; targetId: string | null; position: Vec2; remaining: number } | null;
-  channel: { abilityId: AbilityId; position: Vec2; remaining: number; tickRemaining: number } | null;
+  channel: { abilityId: "healer-healing-circle"; position: Vec2; remaining: number; tickRemaining: number; ticksApplied: number } | null;
 };
 
 export type CombatGroup = {
   id: string;
   ownerId: string;
   faction: CombatFaction;
+  controller: CombatController;
   stance: CombatStance;
   recalled: boolean;
-  engagedGroupIds: string[];
+  engagedFactionIds: CombatFaction[];
   anchor: Vec2;
   moveTarget: Vec2 | null;
 };
@@ -67,9 +71,17 @@ export type CombatCommand =
   | { type: "set-stance"; groupId: string; ownerId: string; stance: CombatStance }
   | { type: "recall"; groupId: string; ownerId: string };
 
+type EventBase = { tick: number };
+
 export type CombatEvent =
-  | { type: "damage"; sourceId: string; targetId: string; amount: number }
-  | { type: "heal"; sourceId: string; targetId: string; amount: number }
-  | { type: "cast"; sourceId: string; abilityId: AbilityId; targetId: string | null; position: Vec2 }
-  | { type: "taunt"; sourceId: string; targetId: string }
-  | { type: "death"; unitId: string };
+  | (EventBase & { type: "cast-started"; sourceId: string; abilityId: AbilityId; targetId: string | null; sourcePosition: Vec2; targetPosition: Vec2; duration: number })
+  | (EventBase & { type: "action-interrupted"; unitId: string; abilityId: AbilityId | null; position: Vec2; reason: "taunted" | "recalled" | "invalid-target" | "dead" })
+  | (EventBase & { type: "auto-attack"; sourceId: string; targetId: string; kind: AutoAttackKind; sourcePosition: Vec2; targetPosition: Vec2; duration: number })
+  | (EventBase & { type: "projectile-launched"; sourceId: string; targetId: string | null; abilityId: AbilityId | null; kind: "fireball" | "meteor" | "wand"; sourcePosition: Vec2; targetPosition: Vec2; duration: number })
+  | (EventBase & { type: "ability-impact"; sourceId: string; abilityId: AbilityId; position: Vec2; radius: number })
+  | (EventBase & { type: "channel-started" | "channel-tick" | "channel-ended"; sourceId: string; abilityId: "healer-healing-circle"; position: Vec2; radius: number })
+  | (EventBase & { type: "teleport"; unitId: string; abilityId: "melee-backstab"; from: Vec2; to: Vec2 })
+  | (EventBase & { type: "damage"; sourceId: string; targetId: string; amount: number; sourcePosition: Vec2; targetPosition: Vec2; abilityId: AbilityId | null })
+  | (EventBase & { type: "heal"; sourceId: string; targetId: string; amount: number; sourcePosition: Vec2; targetPosition: Vec2; abilityId: AbilityId })
+  | (EventBase & { type: "taunt"; sourceId: string; targetId: string; sourcePosition: Vec2; targetPosition: Vec2; duration: number })
+  | (EventBase & { type: "death"; unitId: string; position: Vec2 });

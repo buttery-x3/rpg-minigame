@@ -16,5 +16,8 @@ export const materials = {
   enemyUnitRing: new THREE.MeshBasicMaterial({ color: 0xeb4d55, transparent: false, depthWrite: true }),
   enemyOverlay: new THREE.MeshBasicMaterial({ color: 0xf0444f, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide, blending: THREE.NormalBlending, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
   partyBase: new THREE.MeshBasicMaterial({ color: 0x52d68c, transparent: false, depthWrite: true }),
+  statusBack: new THREE.MeshBasicMaterial({ color: 0x101820, transparent: true, opacity: 0.88, depthWrite: false }),
+  statusHealth: new THREE.MeshBasicMaterial({ color: 0xe15d67, depthWrite: false }),
+  statusEnergy: new THREE.MeshBasicMaterial({ color: 0x67bde8, depthWrite: false }),
   marker: new THREE.MeshBasicMaterial({ color: 0xf1d37b, transparent: true, opacity: 0.75 }),
 };

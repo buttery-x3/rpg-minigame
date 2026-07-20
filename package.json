@@ -14,7 +14,7 @@
     "pm2:stop": "pm2 delete rpg-minigame",
     "deploy:production": "bash deploy.sh",
     "verify:render": "node scripts/verify-render.mjs",
-    "verify": "npm run build && npm run verify:render"
+    "verify": "npm test && npm run build && npm run verify:render"
   },
   "dependencies": {
     "three": "^0.184.0"

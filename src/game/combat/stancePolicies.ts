@@ -1,14 +1,14 @@
 import type { CombatStance } from "./types";
 
 export type StancePolicy = {
-  energyReserve: number;
-  allowUnlimitedPursuit: boolean;
-  formationTether: number;
+  lowCostReserve: number;
+  highCostReserve: number;
+  scoreModifier: number;
   emergencyOverridesReserve: boolean;
 };
 
 export const stancePolicies: Record<CombatStance, StancePolicy> = {
-  aggressive: { energyReserve: 0, allowUnlimitedPursuit: true, formationTether: Number.POSITIVE_INFINITY, emergencyOverridesReserve: true },
-  balanced: { energyReserve: 25, allowUnlimitedPursuit: true, formationTether: Number.POSITIVE_INFINITY, emergencyOverridesReserve: true },
-  defensive: { energyReserve: 55, allowUnlimitedPursuit: false, formationTether: 6, emergencyOverridesReserve: true },
+  aggressive: { lowCostReserve: 0, highCostReserve: 0, scoreModifier: 12, emergencyOverridesReserve: true },
+  balanced: { lowCostReserve: 10, highCostReserve: 25, scoreModifier: 0, emergencyOverridesReserve: true },
+  defensive: { lowCostReserve: 25, highCostReserve: 55, scoreModifier: -8, emergencyOverridesReserve: true },
 };

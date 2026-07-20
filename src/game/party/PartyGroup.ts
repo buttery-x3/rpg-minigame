@@ -11,13 +11,13 @@ export class PartyGroup {
   private formationSlots = new Map<string, THREE.Vector3>();
   private currentFormation: FormationType = "triangle";
   private moveTarget: THREE.Vector3 | null = null;
-  private heading = Math.PI / 4;
+  private heading = 0;
 
   constructor(
     readonly id: string,
     readonly isMain: boolean,
     members: readonly PartyMember[],
-    heading = Math.PI / 4,
+    heading = 0,
   ) {
     this.group.name = id;
     this.membersInternal = [...members];
@@ -49,6 +49,12 @@ export class PartyGroup {
 
   containsRole(role: PartyRole) {
     return this.membersInternal.some((member) => member.role === role);
+  }
+
+  getFormationWorldPosition(memberId: string) {
+    const slot = this.formationSlots.get(memberId);
+    if (!slot) return undefined;
+    return slot.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), this.heading).add(this.position);
   }
 
   setFormation(formation: FormationType) {

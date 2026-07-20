@@ -43,16 +43,11 @@ export class WorldScene {
 
   private buildGrid() {
     const positions: number[] = [];
-    for (let x = -WORLD_HALF_WIDTH; x <= WORLD_HALF_WIDTH; x += TILE_SIZE) {
-      positions.push(x, 0.015, -WORLD_HALF_HEIGHT, x, 0.015, WORLD_HALF_HEIGHT);
-    }
-    for (let z = -WORLD_HALF_HEIGHT; z <= WORLD_HALF_HEIGHT; z += TILE_SIZE) {
-      positions.push(-WORLD_HALF_WIDTH, 0.015, z, WORLD_HALF_WIDTH, 0.015, z);
-    }
+    for (let x = -WORLD_HALF_WIDTH; x <= WORLD_HALF_WIDTH; x += TILE_SIZE) positions.push(x, 0.015, -WORLD_HALF_HEIGHT, x, 0.015, WORLD_HALF_HEIGHT);
+    for (let z = -WORLD_HALF_HEIGHT; z <= WORLD_HALF_HEIGHT; z += TILE_SIZE) positions.push(-WORLD_HALF_WIDTH, 0.015, z, WORLD_HALF_WIDTH, 0.015, z);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-    const material = new THREE.LineBasicMaterial({ color: 0x9ba7ad, transparent: true, opacity: 0.55 });
-    const grid = new THREE.LineSegments(geometry, material);
+    const grid = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: 0x9ba7ad, transparent: true, opacity: 0.55 }));
     grid.name = "TestWorldGrid";
     this.group.add(grid);
   }
@@ -60,12 +55,8 @@ export class WorldScene {
   private buildBorder() {
     const horizontalGeometry = new THREE.BoxGeometry(WORLD_WIDTH + BORDER_WIDTH, BORDER_HEIGHT, BORDER_WIDTH);
     const verticalGeometry = new THREE.BoxGeometry(BORDER_WIDTH, BORDER_HEIGHT, WORLD_HEIGHT + BORDER_WIDTH);
-    for (const z of [-WORLD_HALF_HEIGHT, WORLD_HALF_HEIGHT]) {
-      this.addBorderRail(horizontalGeometry, 0, z);
-    }
-    for (const x of [-WORLD_HALF_WIDTH, WORLD_HALF_WIDTH]) {
-      this.addBorderRail(verticalGeometry, x, 0);
-    }
+    for (const z of [-WORLD_HALF_HEIGHT, WORLD_HALF_HEIGHT]) this.addBorderRail(horizontalGeometry, 0, z);
+    for (const x of [-WORLD_HALF_WIDTH, WORLD_HALF_WIDTH]) this.addBorderRail(verticalGeometry, x, 0);
   }
 
   private addBorderRail(geometry: THREE.BufferGeometry, x: number, z: number) {

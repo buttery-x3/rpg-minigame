@@ -1,5 +1,5 @@
 import type { CombatSimulation } from "./CombatSimulation";
-import type { CombatFaction, CombatStance, UnitAction, Vec2 } from "./types";
+import type { CombatFaction, CombatStance, UnitAction, UnitStats, Vec2 } from "./types";
 
 type PublicUnitView = {
   id: string;
@@ -9,7 +9,7 @@ type PublicUnitView = {
   action: UnitAction;
 };
 
-type OwnedUnitView = PublicUnitView & {
+export type OwnedUnitView = PublicUnitView & {
   name: string;
   role: string;
   groupId: string;
@@ -18,6 +18,7 @@ type OwnedUnitView = PublicUnitView & {
   energy: number;
   maxEnergy: number;
   threat: number;
+  stats: UnitStats;
   abilities: Array<{ id: string; cooldownRemaining: number }>;
 };
 
@@ -51,7 +52,8 @@ export function buildPlayerView(simulation: CombatSimulation, ownerId: string): 
       energy: unit.energy,
       maxEnergy: unit.maxEnergy,
       threat: unit.threat,
-      abilities: unit.abilities.map((id) => ({ id, cooldownRemaining: unit.cooldowns[id] })),
+      stats: { ...unit.stats },
+      abilities: unit.abilities.map((id) => ({ id, cooldownRemaining: unit.cooldowns[id] ?? 0 })),
     }));
   return {
     publicUnits,
