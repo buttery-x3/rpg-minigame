@@ -121,4 +121,48 @@ describe("CombatSimulation", () => {
     expect(after.abilities).toEqual(["ranged-fireball", "healer-heal"]);
     expect(after.cooldowns["ranged-fireball"]).toBe(0);
   });
+
+  it("evaluates an equipped ability even when it does not match the unit's starter role", () => {
+    const simulation = new CombatSimulation();
+    simulation.addGroup("party", "party", "aggressive");
+    simulation.addGroup("enemy", "enemy");
+    addUnit(simulation, "custom-unit", "party", "melee", ["ranged-fireball"], 0);
+    addUnit(simulation, "enemy", "enemy", "tank", ["tank-threat-shout", "tank-taunt"], 5);
+    const enemy = simulation.units.get("enemy")!;
+    const health = enemy.health;
+
+    simulation.update(0.1);
+    simulation.update(0.4);
+
+    expect(enemy.health).toBeLessThan(health);
+  });
+
+  it("accepts group commands only from the owner and moves the simulation anchor", () => {
+    const simulation = new CombatSimulation();
+    simulation.addGroup("party", "party", "balanced", "player-a");
+
+    expect(simulation.enqueueCommand({ type: "move", groupId: "party", ownerId: "player-b", position: { x: 10, z: 0 } })).toBe(false);
+    expect(simulation.enqueueCommand({ type: "move", groupId: "party", ownerId: "player-a", position: { x: 10, z: 0 } })).toBe(true);
+    simulation.update(1);
+
+    expect(simulation.groups.get("party")?.anchor.x).toBe(10);
+  });
+
+  it("uses stance policy energy reserves for high-cost abilities", () => {
+    const simulation = new CombatSimulation();
+    simulation.addGroup("party", "party", "balanced");
+    simulation.addGroup("enemy", "enemy");
+    addUnit(simulation, "caster", "party", "melee", ["ranged-meteor"], 0);
+    addUnit(simulation, "enemy-1", "enemy", "tank", ["tank-threat-shout", "tank-taunt"], 5);
+    addUnit(simulation, "enemy-2", "enemy", "tank", ["tank-threat-shout", "tank-taunt"], 6);
+    addUnit(simulation, "enemy-3", "enemy", "tank", ["tank-threat-shout", "tank-taunt"], 7);
+    simulation.units.get("caster")!.energy = 80;
+
+    simulation.update(0.1);
+    expect(simulation.consumeEvents().some((event) => event.type === "cast" && event.abilityId === "ranged-meteor")).toBe(false);
+
+    simulation.setGroupStance("party", "aggressive");
+    simulation.update(0.1);
+    expect(simulation.consumeEvents().some((event) => event.type === "cast" && event.abilityId === "ranged-meteor")).toBe(true);
+  });
 });

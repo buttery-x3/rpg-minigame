@@ -1,6 +1,7 @@
 import { ENERGY_MAX, THREAT_DECAY_PER_SECOND, THREAT_MAX, attackInterval, awarenessRange, energyRegen, maxHealth } from "./combatBalance";
-import type { AbilityId, CombatEvent, CombatFaction, CombatGroup, CombatRole, CombatStance, CombatUnit, UnitStats, Vec2 } from "./types";
+import type { AbilityId, CombatCommand, CombatEvent, CombatFaction, CombatGroup, CombatRole, CombatStance, CombatUnit, UnitStats, Vec2 } from "./types";
 import { abilityCatalog } from "./abilityCatalog";
+import { stancePolicies } from "./stancePolicies";
 
 const distance = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -11,9 +12,11 @@ export class CombatSimulation {
   readonly units = new Map<string, CombatUnit>();
   readonly groups = new Map<string, CombatGroup>();
   private readonly eventsInternal: CombatEvent[] = [];
+  private readonly commands: CombatCommand[] = [];
+  private tick = 0;
 
   addGroup(id: string, faction: CombatFaction, stance: CombatStance = "balanced", ownerId: string = faction) {
-    this.groups.set(id, { id, ownerId, faction, stance, recalled: false, engagedGroupIds: [] });
+    this.groups.set(id, { id, ownerId, faction, stance, recalled: false, engagedGroupIds: [], anchor: { x: 0, z: 0 }, moveTarget: null });
   }
 
   addUnit(config: { id: string; name: string; faction: CombatFaction; role: CombatRole; groupId: string; position: Vec2; stats: UnitStats; abilities: AbilityId[] }) {
@@ -31,11 +34,25 @@ export class CombatSimulation {
     if (group) { group.stance = stance; group.recalled = false; }
   }
 
+  setGroupAnchor(groupId: string, anchor: Vec2) {
+    const group = this.groups.get(groupId);
+    if (group) group.anchor = clone(anchor);
+  }
+
+  enqueueCommand(command: CombatCommand) {
+    const group = this.groups.get(command.groupId);
+    if (!group || group.ownerId !== command.ownerId) return false;
+    if (command.type === "move" && (!Number.isFinite(command.position.x) || !Number.isFinite(command.position.z))) return false;
+    this.commands.push(command);
+    return true;
+  }
+
   recallGroup(groupId: string) {
     const group = this.groups.get(groupId);
     if (!group) return;
     group.stance = "defensive";
     group.recalled = true;
+    group.moveTarget = null;
     group.engagedGroupIds.forEach((enemyGroupId) => {
       const enemyGroup = this.groups.get(enemyGroupId);
       if (enemyGroup) enemyGroup.engagedGroupIds = enemyGroup.engagedGroupIds.filter((id) => id !== groupId);
@@ -59,6 +76,16 @@ export class CombatSimulation {
   setUnitGroup(id: string, groupId: string) {
     const unit = this.units.get(id);
     if (unit) unit.groupId = groupId;
+  }
+
+  removeGroup(groupId: string) {
+    const group = this.groups.get(groupId);
+    if (!group) return;
+    group.engagedGroupIds.forEach((otherId) => {
+      const other = this.groups.get(otherId);
+      if (other) other.engagedGroupIds = other.engagedGroupIds.filter((id) => id !== groupId);
+    });
+    this.groups.delete(groupId);
   }
 
   /** Future party-planner entry point: validate abilities and recalculate resources without recreating the unit. */
@@ -85,7 +112,10 @@ export class CombatSimulation {
   consumeEvents() { return this.eventsInternal.splice(0); }
 
   update(dt: number) {
+    this.tick += 1;
+    this.processCommands();
     this.updateComputerStances();
+    this.advanceGroupMovement(dt);
     for (const unit of this.units.values()) this.advanceResources(unit, dt);
     for (const unit of this.units.values()) this.advanceAction(unit, dt);
     for (const unit of this.units.values()) this.decide(unit, dt);
@@ -100,6 +130,28 @@ export class CombatSimulation {
     if (unit.forcedTargetRemaining > 0) {
       unit.forcedTargetRemaining = Math.max(0, unit.forcedTargetRemaining - dt);
       if (unit.forcedTargetRemaining === 0) unit.forcedTargetId = null;
+    }
+  }
+
+  private processCommands() {
+    for (const command of this.commands.splice(0)) {
+      const group = this.groups.get(command.groupId);
+      if (!group || group.ownerId !== command.ownerId) continue;
+      if (command.type === "move") { group.moveTarget = clone(command.position); group.recalled = false; }
+      if (command.type === "set-stance") this.setGroupStance(command.groupId, command.stance);
+      if (command.type === "recall") this.recallGroup(command.groupId);
+    }
+  }
+
+  private advanceGroupMovement(dt: number) {
+    for (const group of this.groups.values()) {
+      if (!group.moveTarget) continue;
+      const dx = group.moveTarget.x - group.anchor.x;
+      const dz = group.moveTarget.z - group.anchor.z;
+      const length = Math.hypot(dx, dz);
+      if (length <= 0.02) { group.anchor = clone(group.moveTarget); group.moveTarget = null; continue; }
+      const amount = Math.min(length, 10.5 * dt);
+      group.anchor = { x: group.anchor.x + dx / length * amount, z: group.anchor.z + dz / length * amount };
     }
   }
 
@@ -140,10 +192,11 @@ export class CombatSimulation {
     if (!target) { unit.action = "idle"; return; }
 
     const ability = this.chooseAbility(unit, target, group.stance);
-    if (ability) { this.cast(unit, ability, target); return; }
+    if (ability) { this.cast(unit, ability.id, ability.target); return; }
     const range = unit.role === "tank" || unit.role === "melee" ? 1.8 : 9;
     if (distance(unit.position, target.position) > range) {
-      if (group.stance !== "defensive" || distance(unit.position, unit.home) < 6) { unit.action = "pursuing"; this.move(unit, target.position, 7.4, dt); }
+      const policy = stancePolicies[group.stance];
+      if (policy.allowUnlimitedPursuit || distance(unit.position, unit.home) < policy.formationTether) { unit.action = "pursuing"; this.move(unit, target.position, 7.4, dt); }
       return;
     }
     if (unit.attackRemaining === 0) this.autoAttack(unit, target);
@@ -165,35 +218,35 @@ export class CombatSimulation {
     return candidates.filter((candidate) => candidate.threat === highest).sort((a, b) => a.id.localeCompare(b.id))[0];
   }
 
-  private chooseAbility(unit: CombatUnit, target: CombatUnit, stance: CombatStance): AbilityId | undefined {
-    const usable = unit.abilities.filter((id) => unit.energy >= abilityCatalog[id].energyCost && unit.cooldowns[id] === 0);
-    const highAllowed = stance === "aggressive" || unit.energy >= 80 || this.isEmergency(unit, target);
-    const nearestEnemies = [...this.units.values()].filter((candidate) => candidate.alive && candidate.faction !== unit.faction && distance(candidate.position, unit.position) <= 4).length;
-    const injured = [...this.units.values()].filter((candidate) => candidate.alive && candidate.faction === unit.faction && candidate.health / candidate.maxHealth < 0.82);
-    if (unit.role === "tank") {
-      const highestFriendly = Math.max(...[...this.units.values()].filter((candidate) => candidate.alive && candidate.faction === unit.faction).map((candidate) => candidate.threat));
-      if (usable.includes("tank-taunt") && highAllowed && target.targetId !== unit.id && highestFriendly > unit.threat) return "tank-taunt";
-      if (usable.includes("tank-threat-shout") && unit.threat + 15 < highestFriendly) return "tank-threat-shout";
-    }
-    if (unit.role === "melee") {
-      if (usable.includes("melee-backstab") && highAllowed && distance(unit.position, target.position) <= 8) return "melee-backstab";
-      if (usable.includes("melee-fan-of-knives") && nearestEnemies >= 2) return "melee-fan-of-knives";
-    }
-    if (unit.role === "ranged") {
-      const cluster = [...this.units.values()].filter((candidate) => candidate.alive && candidate.faction !== unit.faction && distance(candidate.position, target.position) <= 4).length;
-      if (usable.includes("ranged-meteor") && highAllowed && cluster >= 3) return "ranged-meteor";
-      if (usable.includes("ranged-fireball") && distance(unit.position, target.position) <= 10) return "ranged-fireball";
-    }
-    if (unit.role === "healer") {
-      const critical = injured.filter((candidate) => candidate.health / candidate.maxHealth < 0.4).length;
-      if (usable.includes("healer-healing-circle") && highAllowed && (injured.length >= 3 || critical >= 2)) return "healer-healing-circle";
-      if (usable.includes("healer-heal") && injured.length > 0) return "healer-heal";
-    }
-    return undefined;
+  private chooseAbility(unit: CombatUnit, target: CombatUnit, stance: CombatStance) {
+    const candidates = unit.abilities
+      .filter((id) => unit.energy >= abilityCatalog[id].energyCost && unit.cooldowns[id] === 0)
+      .map((id) => this.evaluateAbility(unit, id, target, stance))
+      .filter((candidate): candidate is { id: AbilityId; target: CombatUnit; score: number } => candidate !== undefined);
+    return candidates.sort((left, right) => right.score - left.score || left.id.localeCompare(right.id))[0];
   }
 
-  private isEmergency(unit: CombatUnit, target: CombatUnit) {
-    return unit.role === "healer" || target.targetId !== unit.id;
+  /** Ability evaluation is keyed by equipped ability, never by the caster's role. */
+  private evaluateAbility(unit: CombatUnit, id: AbilityId, hostileTarget: CombatUnit, stance: CombatStance) {
+    const friendlies = [...this.units.values()].filter((candidate) => candidate.alive && candidate.faction === unit.faction);
+    const injured = friendlies.filter((candidate) => candidate.health / candidate.maxHealth < 0.82);
+    const lowestAlly = this.lowestHealthAlly(unit);
+    const nearbyEnemies = [...this.units.values()].filter((candidate) => candidate.alive && candidate.faction !== unit.faction && distance(candidate.position, unit.position) <= 4);
+    const cluster = [...this.units.values()].filter((candidate) => candidate.alive && candidate.faction !== unit.faction && distance(candidate.position, hostileTarget.position) <= 4);
+    const highestFriendlyThreat = Math.max(...friendlies.map((candidate) => candidate.threat));
+    const criticalAllies = injured.filter((candidate) => candidate.health / candidate.maxHealth < 0.4).length;
+
+    const policy = stancePolicies[stance];
+    const highAllowed = (emergency: boolean) => !abilityCatalog[id].highCost || unit.energy - abilityCatalog[id].energyCost >= policy.energyReserve || (emergency && policy.emergencyOverridesReserve);
+    if (id === "tank-threat-shout" && unit.threat + 15 < highestFriendlyThreat) return { id, target: hostileTarget, score: 76 };
+    if (id === "tank-taunt" && hostileTarget.targetId !== unit.id && highestFriendlyThreat > unit.threat && highAllowed(true)) return { id, target: hostileTarget, score: 100 };
+    if (id === "melee-fan-of-knives" && nearbyEnemies.length >= 2) return { id, target: hostileTarget, score: 48 + nearbyEnemies.length };
+    if (id === "melee-backstab" && distance(unit.position, hostileTarget.position) <= 8 && highAllowed(false)) return { id, target: hostileTarget, score: 62 };
+    if (id === "ranged-fireball" && distance(unit.position, hostileTarget.position) <= 10) return { id, target: hostileTarget, score: 36 };
+    if (id === "ranged-meteor" && cluster.length >= 3 && highAllowed(false)) return { id, target: hostileTarget, score: 72 + cluster.length };
+    if (id === "healer-heal" && lowestAlly && lowestAlly.health / lowestAlly.maxHealth < 0.82) return { id, target: lowestAlly, score: lowestAlly.health / lowestAlly.maxHealth < 0.4 ? 95 : 52 };
+    if (id === "healer-healing-circle" && lowestAlly && (injured.length >= 3 || criticalAllies >= 2) && highAllowed(criticalAllies >= 2)) return { id, target: lowestAlly, score: 86 + criticalAllies };
+    return undefined;
   }
 
   private cast(unit: CombatUnit, ability: AbilityId, target: CombatUnit) {

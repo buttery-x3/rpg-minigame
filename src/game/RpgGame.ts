@@ -54,6 +54,7 @@ export class RpgGame {
 
     this.configureRenderer();
     this.buildScene();
+    void this.party.loadVisualAssets();
     this.container.append(this.renderer.domElement, this.hud.element);
 
     window.addEventListener("resize", this.cameraRig.resize);

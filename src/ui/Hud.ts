@@ -2,6 +2,7 @@ import type { FormationType, GesturePreview, PartyRole } from "../types";
 import type { PartyController } from "../game/party/PartyController";
 import type { PartyGroup } from "../game/party/PartyGroup";
 import type { CombatStance } from "../game/combat/types";
+import { abilityCatalog } from "../game/combat/abilityCatalog";
 
 const roleLabels: Partial<Record<PartyRole, string>> = {
   tank: "Tank",
@@ -125,19 +126,23 @@ export class Hud {
 
   update(paused: boolean) {
     this.syncGroupPanels();
+    const combatView = this.party.playerView;
+    const ownedUnits = new Map(combatView.ownedUnits.map((unit) => [unit.id, unit]));
+    const ownedGroups = new Map(combatView.ownedGroups.map((group) => [group.id, group]));
     this.party.members.forEach((member) => {
       const elements = this.memberCards.get(member.id);
-      if (!elements) {
+      const state = ownedUnits.get(member.id);
+      if (!elements || !state) {
         return;
       }
-      const health = Math.round(member.health);
+      const health = Math.round(state.health);
       elements.health.textContent = `${health}`;
-      elements.bar.style.width = `${(member.health / member.maxHealth) * 100}%`;
-      elements.energy.textContent = `${Math.round(member.energy)}`;
-      elements.energyBar.style.width = `${(member.energy / member.maxEnergy) * 100}%`;
-      elements.threat.textContent = `${Math.round(member.threat)}`;
-      elements.action.textContent = member.action === "idle" ? this.roleLabel(member.role) : `${this.roleLabel(member.role)} · ${member.action}`;
-      elements.abilities.textContent = this.party.getAbilityStatus(member.id);
+      elements.bar.style.width = `${(state.health / state.maxHealth) * 100}%`;
+      elements.energy.textContent = `${Math.round(state.energy)}`;
+      elements.energyBar.style.width = `${(state.energy / state.maxEnergy) * 100}%`;
+      elements.threat.textContent = `${Math.round(state.threat)}`;
+      elements.action.textContent = state.action === "idle" ? this.roleLabel(member.role) : `${this.roleLabel(member.role)} · ${state.action}`;
+      elements.abilities.textContent = state.abilities.map((ability) => ability.cooldownRemaining > 0 ? `${abilityCatalog[ability.id as keyof typeof abilityCatalog].label} ${ability.cooldownRemaining.toFixed(1)}s` : `${abilityCatalog[ability.id as keyof typeof abilityCatalog].label} ready`).join(" · ");
     });
 
     this.party.groups.forEach((group) => {
@@ -149,7 +154,7 @@ export class Hud {
       panel.count.textContent = `${group.members.length} members`;
       group.members.forEach((member) => panel.list.append(this.memberCards.get(member.id)?.card ?? document.createElement("div")));
       panel.formationButtons.forEach((button, formation) => button.classList.toggle("is-selected", formation === group.formation));
-      const stance = this.party.getGroupStance(group.id);
+      const stance = ownedGroups.get(group.id)?.stance ?? "balanced";
       panel.stanceButtons.forEach((button, candidate) => button.classList.toggle("is-selected", stance === candidate));
     });
 

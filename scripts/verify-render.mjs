@@ -62,8 +62,10 @@ async function verifyInBrowser() {
       const cameraPanelHiddenOnLoad = await page.locator(".camera-panel").evaluate((panel) => panel.hidden);
       const stanceButtonCount = await page.locator('[data-party-group="main"] button[data-stance]').count();
       await page.locator('[data-party-group="main"] button[data-stance="aggressive"]').click();
+      await page.waitForFunction(() => window.__RPG_GAME__?.getDiagnostics().party.groups.find((group) => group.id === "main")?.stance === "aggressive");
       const aggressiveStance = (await readDiagnostics(page)).party.groups.find((group) => group.id === "main")?.stance;
       await page.locator('[data-party-group="main"] .party-panel__recall').click();
+      await page.waitForFunction(() => window.__RPG_GAME__?.getDiagnostics().party.groups.find((group) => group.id === "main")?.stance === "defensive");
       const defensiveAfterRecall = (await readDiagnostics(page)).party.groups.find((group) => group.id === "main")?.stance;
       await page.locator("[data-camera-toggle]").click();
       const cameraPanelVisibleAfterToggle = await page.locator(".camera-panel:not([hidden])").count();

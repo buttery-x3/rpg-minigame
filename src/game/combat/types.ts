@@ -58,7 +58,14 @@ export type CombatGroup = {
   stance: CombatStance;
   recalled: boolean;
   engagedGroupIds: string[];
+  anchor: Vec2;
+  moveTarget: Vec2 | null;
 };
+
+export type CombatCommand =
+  | { type: "move"; groupId: string; ownerId: string; position: Vec2 }
+  | { type: "set-stance"; groupId: string; ownerId: string; stance: CombatStance }
+  | { type: "recall"; groupId: string; ownerId: string };
 
 export type CombatEvent =
   | { type: "damage"; sourceId: string; targetId: string; amount: number }

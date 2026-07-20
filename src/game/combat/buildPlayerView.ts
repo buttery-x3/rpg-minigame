@@ -24,7 +24,7 @@ type OwnedUnitView = PublicUnitView & {
 export type PlayerCombatView = {
   publicUnits: PublicUnitView[];
   ownedUnits: OwnedUnitView[];
-  ownedGroups: Array<{ id: string; stance: CombatStance; recalled: boolean }>;
+  ownedGroups: Array<{ id: string; stance: CombatStance; recalled: boolean; anchor: Vec2; moveTarget: Vec2 | null }>;
 };
 
 /**
@@ -58,6 +58,6 @@ export function buildPlayerView(simulation: CombatSimulation, ownerId: string): 
     ownedUnits,
     ownedGroups: [...simulation.groups.values()]
       .filter((group) => group.ownerId === ownerId)
-      .map((group) => ({ id: group.id, stance: group.stance, recalled: group.recalled })),
+      .map((group) => ({ id: group.id, stance: group.stance, recalled: group.recalled, anchor: { ...group.anchor }, moveTarget: group.moveTarget ? { ...group.moveTarget } : null })),
   };
 }
